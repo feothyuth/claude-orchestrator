@@ -1,13 +1,16 @@
 {
-  "version": "1.0.0",
-  "last_updated": "2025-06-18",
+  "version": "2.0.0",
+  "last_updated": "2025-11-28",
   "patterns": [
     {
       "id": "rust-tui-example-creation",
       "name": "Rust TUI Example Success Pattern",
-      "category": "systems",
+      "category": "rust-systems",
       "description": "Creating production-grade Rust TUI examples with ratatui for trading/monitoring applications",
       "success_rate": 1.0,
+      "times_used": 1,
+      "last_used": "2025-11-28",
+      "utility_score": 0.7,
       "projects": ["arbitrage-bot/spread_heatmap"],
       "key_elements": [
         "Full file path specification in prompt",
@@ -24,14 +27,17 @@
         "src/ui/": "UI components"
       },
       "agent_used": "@rust-pro",
-      "timestamp": "2025-11-28"
+      "created": "2025-11-28"
     },
     {
       "id": "react-component-pattern",
       "name": "React Component Success Pattern",
-      "category": "frontend",
+      "category": "frontend-react",
       "description": "Modular React component structure with hooks and TypeScript",
       "success_rate": 0.95,
+      "times_used": 0,
+      "last_used": null,
+      "utility_score": 0.5,
       "projects": [],
       "key_elements": [
         "Single responsibility principle",
@@ -46,14 +52,18 @@
         "types.ts": "TypeScript interfaces",
         "hooks/": "Custom hooks directory",
         "utils/": "Utility functions"
-      }
+      },
+      "created": "2025-11-01"
     },
     {
       "id": "express-api-pattern",
       "name": "Express API Success Pattern",
-      "category": "backend",
+      "category": "backend-nodejs",
       "description": "RESTful API with Express.js, proper middleware, and error handling",
       "success_rate": 0.92,
+      "times_used": 0,
+      "last_used": null,
+      "utility_score": 0.5,
       "projects": [],
       "key_elements": [
         "Route-based organization",
@@ -70,14 +80,18 @@
         "models/": "Database models",
         "utils/": "Utility functions",
         "config/": "Configuration files"
-      }
+      },
+      "created": "2025-11-01"
     },
     {
       "id": "python-cli-pattern",
       "name": "Python CLI Success Pattern",
-      "category": "cli",
+      "category": "python-cli",
       "description": "Command-line interface with argparse and modular architecture",
       "success_rate": 0.89,
+      "times_used": 0,
+      "last_used": null,
+      "utility_score": 0.5,
       "projects": [],
       "key_elements": [
         "Command-based architecture",
@@ -93,9 +107,12 @@
         "utils/": "Utility functions",
         "config/": "Configuration handling",
         "tests/": "Test files"
-      }
+      },
+      "created": "2025-11-01"
     }
   ],
+  "core_patterns": [],
+  "archived_patterns": [],
   "insights": {
     "most_successful_patterns": ["react-component-pattern", "express-api-pattern"],
     "common_success_factors": [
