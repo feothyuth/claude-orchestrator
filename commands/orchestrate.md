@@ -1,6 +1,7 @@
 ---
 description: Orchestrate complex tasks with intelligent memory, pattern learning, and multi-agent coordination
 argument-hint: [task description]
+allowed-tools: "Task,Read,Write,Edit,Glob,Grep,Bash(python3:*),Bash(git:*)"
 ---
 
 # ORCHESTRATION MODE v3.0
