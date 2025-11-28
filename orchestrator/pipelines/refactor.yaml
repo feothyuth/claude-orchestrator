@@ -1,0 +1,26 @@
+name: refactor
+description: Safe refactoring with tests first
+
+steps:
+  - name: ensure-tests
+    description: Ensure tests exist before refactoring
+    agent: test-writer
+    parallel: false
+
+  - name: refactor
+    description: Perform the refactoring
+    agent: auto
+    parallel: false
+    depends_on: ensure-tests
+
+  - name: architecture-review
+    description: Review architectural impact
+    agent: architecture-reviewer
+    parallel: true
+    depends_on: refactor
+
+  - name: simplicity-review
+    description: Ensure refactor didn't over-engineer
+    agent: simplicity-reviewer
+    parallel: true
+    depends_on: refactor

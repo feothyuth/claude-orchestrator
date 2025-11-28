@@ -1,0 +1,19 @@
+# Sensitive files
+settings.json
+sounds/
+.credentials.json
+
+# Cache
+*.pyc
+__pycache__/
+.DS_Store
+
+# Debug logs (large)
+debug/
+file-history/
+
+# Local checkpoints (large)
+orchestrator/checkpoints/
+
+# Skills (separate)
+skills/

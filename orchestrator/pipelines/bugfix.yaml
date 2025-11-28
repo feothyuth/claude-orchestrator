@@ -1,0 +1,20 @@
+name: bugfix
+description: Bug fix with regression test
+
+steps:
+  - name: fix
+    description: Fix the bug
+    agent: auto
+    parallel: false
+
+  - name: regression-test
+    description: Add regression test to prevent recurrence
+    agent: test-writer
+    parallel: false
+    depends_on: fix
+
+  - name: review
+    description: Review the fix
+    agent: code-reviewer
+    parallel: false
+    depends_on: regression-test

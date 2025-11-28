@@ -1,0 +1,34 @@
+name: feature
+description: Full feature development with testing and review
+
+steps:
+  - name: implement
+    description: Implement the feature
+    agent: auto  # auto-detect: rust-pro, python-pro, typescript-pro, etc.
+    parallel: false
+
+  - name: test
+    description: Write comprehensive tests
+    agent: test-writer
+    parallel: false
+    depends_on: implement
+
+  - name: security-review
+    description: Security audit
+    agent: security-auditor
+    parallel: true
+    depends_on: test
+
+  - name: performance-review
+    description: Performance analysis
+    agent: performance-reviewer
+    parallel: true
+    depends_on: test
+
+  - name: final-review
+    description: Code quality review
+    agent: code-reviewer
+    parallel: false
+    depends_on:
+      - security-review
+      - performance-review
