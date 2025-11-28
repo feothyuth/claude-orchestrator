@@ -1,27 +1,51 @@
 ---
-description: Orchestrate complex tasks using RVGB architecture with PostgreSQL memory, Redis Blackboard, and Docker verification
+description: Orchestrate complex tasks with intelligent memory, pattern learning, and multi-agent coordination
 argument-hint: [task description]
 ---
 
-# ORCHESTRATION MODE v3.0 (RVGB - Recursive Verifying Graph-Blackboard)
+# ORCHESTRATION MODE v3.0
 
 **Task:** $ARGUMENTS
 
 ---
 
-## RVGB ARCHITECTURE OVERVIEW
+## ARCHITECTURE MODES
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  RVGB: Recursive Verifying Graph-Blackboard                │
+│  LITE MODE (Default) - Works Immediately                    │
+│  ─────────────────────────────────────────────────────────  │
+│  SQLite → Tiered memory with Generative Agents scoring     │
+│  File-based → Blackboard in SQLite for coordination        │
+│  Local → Verification via native tools (no Docker needed)  │
+│  Performance: ~95% of full infrastructure                  │
 │                                                             │
-│  PostgreSQL → Hybrid tiered memory (episodic + semantic)   │
-│  Redis → Blackboard for agent coordination                 │
-│  Docker → Shadow workspace for safe verification           │
+│  Storage: ~/.claude/orchestrator/memory/orchestrator.db    │
+│  Module:  infrastructure/memory_lite.py                     │
+├─────────────────────────────────────────────────────────────┤
+│  FULL MODE (Optional) - Maximum Performance                 │
+│  ─────────────────────────────────────────────────────────  │
+│  PostgreSQL → pgvector for vector similarity search        │
+│  Redis → O(1) Blackboard with pub/sub                      │
+│  Docker → Shadow workspace for isolated verification       │
 │  MCP → Memory server for tool-based access                 │
-│  Knowledge Graph → Temporal entity relationships           │
-│  Reflexion → Stored reflections + retrieval                │
+│                                                             │
+│  Setup: ./orchestrator/infrastructure/setup.sh             │
+│  Requires: Docker Desktop                                   │
 └─────────────────────────────────────────────────────────────┘
+```
+
+**Mode Detection:**
+```python
+# Auto-detect mode based on available infrastructure
+import os
+FULL_MODE = all([
+    os.environ.get('DATABASE_URL'),
+    os.environ.get('REDIS_URL'),
+    os.path.exists('/var/run/docker.sock')
+])
+# If FULL_MODE: use PostgreSQL/Redis/Docker
+# Else: use memory_lite.py (SQLite)
 ```
 
 ---
@@ -41,9 +65,9 @@ Task(subagent_type="general-purpose", prompt="You are @[specialist]. [detailed t
 
 ### RULE 3: ALWAYS UPDATE MEMORY
 After completion, you MUST:
-- Store episodic memory in PostgreSQL
-- Update knowledge graph entities/relations
-- Run memory consolidation on completion
+- Record episode (success/failure with context)
+- Update patterns with outcome
+- Run consolidation if session ending
 - Store reflections if failures occurred
 
 ### RULE 4: USE MODEL ROUTING
@@ -54,7 +78,7 @@ Route tasks to appropriate model based on complexity:
 
 ---
 
-## EXECUTION FLOW (15-STEP RVGB PIPELINE)
+## EXECUTION FLOW (15-STEP PIPELINE)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -78,38 +102,44 @@ Route tasks to appropriate model based on complexity:
 
 ---
 
-## STEP 1: Initialize Infrastructure
+## STEP 1: Initialize Memory System
 
-**Goal:** Ensure all RVGB components are running and accessible
+**Goal:** Initialize the appropriate memory backend based on available infrastructure
 
-### 1.1 Check Environment Variables
-```bash
-# Required environment variables:
-# - DATABASE_URL: PostgreSQL connection string
-# - REDIS_URL: Redis connection string (default: redis://localhost:6379)
-# - DOCKER_HOST: Docker daemon (default: unix:///var/run/docker.sock)
-# - MCP_MEMORY_SERVER_PORT: MCP server port (default: 3000)
+### 1.1 LITE MODE (Default)
 
-# Validate each is set and accessible
-echo "Checking DATABASE_URL..."
-echo "Checking REDIS_URL..."
-echo "Checking Docker daemon..."
-echo "Checking MCP Memory Server..."
+```python
+# LITE: SQLite-based memory - works immediately
+from infrastructure.memory_lite import MemoryLite
+
+memory = MemoryLite()  # Auto-creates ~/.claude/orchestrator/memory/orchestrator.db
+stats = memory.stats()
+print(f"Memory ready: {stats['patterns']} patterns, {stats['episodes']} episodes")
 ```
 
-### 1.2 PostgreSQL Connection
+**What you get:**
+- ✅ Tiered memory (episodic → semantic → procedural)
+- ✅ Generative Agents retrieval scoring (relevance + importance + recency)
+- ✅ Pattern learning from success/failure
+- ✅ Temporal knowledge graph (valid_from/valid_until)
+- ✅ Blackboard for multi-step coordination
+- ✅ Memory consolidation ("sleep cycle")
+
+### 1.2 FULL MODE (Optional - requires Docker)
+
 ```bash
-# Test PostgreSQL connection
-psql $DATABASE_URL -c "SELECT 1;" 2>&1
+# Setup full infrastructure (run once)
+./orchestrator/infrastructure/setup.sh
 
-# Verify required tables exist:
-# - episodic_memory (raw episodes from orchestration runs)
-# - semantic_memory (consolidated patterns and knowledge)
-# - procedural_memory (reflections and learned behaviors)
-# - entities (knowledge graph nodes)
-# - relations (knowledge graph edges)
+# This starts:
+# - PostgreSQL with pgvector (localhost:5432)
+# - Redis for Blackboard (localhost:6379)
+# - Builds Shadow Workspace Docker image
+```
 
-# If tables missing, create them (run schema migration)
+```bash
+# Verify full mode is running
+docker ps | grep -E "orchestrator-(postgres|redis)"
 ```
 
 **PostgreSQL Schema:**

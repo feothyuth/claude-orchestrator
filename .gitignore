@@ -1,5 +1,6 @@
 # Sensitive files
 settings.json
+settings.local.json
 sounds/
 .credentials.json
 
@@ -17,3 +18,18 @@ orchestrator/checkpoints/
 
 # Skills (separate)
 skills/
+
+# Claude Code state (large/transient)
+history.jsonl
+shell-snapshots/
+statsig/
+todos/
+plugins/
+projects/
+
+# SQLite database (regeneratable)
+*.db
+
+# Environment files
+.env
+orchestrator/infrastructure/.env
