@@ -1,0 +1,135 @@
+# Shadow Workspace Docker Image
+# Provides isolated environment for safe code verification
+
+FROM python:3.11-slim
+
+LABEL maintainer="orchestrator"
+LABEL description="Shadow workspace for safe code verification"
+
+# Prevent Python from writing pyc files and buffering stdout/stderr
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build essentials for Python packages
+    build-essential \
+    # Diff and patch utilities
+    diffutils \
+    patch \
+    # Git for version control operations
+    git \
+    # Node.js and npm for JavaScript/TypeScript
+    nodejs \
+    npm \
+    # Rust toolchain (optional, can be removed if not needed)
+    # curl \
+    # Additional utilities
+    jq \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install Python verification tools
+RUN pip install --no-cache-dir \
+    # Linting
+    ruff==0.1.6 \
+    # Type checking
+    mypy==1.7.1 \
+    # Security scanning
+    bandit==1.7.5 \
+    # Testing
+    pytest==7.4.3 \
+    pytest-cov==4.1.0 \
+    pytest-xdist==3.5.0 \
+    # Code formatting
+    black==23.11.0 \
+    isort==5.12.0 \
+    # Additional useful tools
+    pylint==3.0.3
+
+# Install JavaScript/TypeScript tools globally
+RUN npm install -g \
+    eslint@8.54.0 \
+    typescript@5.3.2 \
+    @typescript-eslint/parser@6.12.0 \
+    @typescript-eslint/eslint-plugin@6.12.0 \
+    prettier@3.1.0
+
+# Create workspace directory
+WORKDIR /workspace
+
+# Create non-root user for security
+RUN useradd -m -u 1000 -s /bin/bash shadow && \
+    chown -R shadow:shadow /workspace
+
+# Switch to non-root user
+USER shadow
+
+# Set up default configuration files
+RUN mkdir -p /home/shadow/.config
+
+# Create default .eslintrc.json
+RUN echo '{\n\
+  "parser": "@typescript-eslint/parser",\n\
+  "plugins": ["@typescript-eslint"],\n\
+  "extends": [\n\
+    "eslint:recommended",\n\
+    "plugin:@typescript-eslint/recommended"\n\
+  ],\n\
+  "rules": {\n\
+    "no-console": "warn",\n\
+    "no-unused-vars": "error"\n\
+  }\n\
+}' > /home/shadow/.eslintrc.json
+
+# Create default mypy.ini
+RUN echo '[mypy]\n\
+python_version = 3.11\n\
+warn_return_any = True\n\
+warn_unused_configs = True\n\
+disallow_untyped_defs = False\n\
+disallow_incomplete_defs = False\n\
+check_untyped_defs = True\n\
+no_implicit_optional = True\n\
+warn_redundant_casts = True\n\
+warn_unused_ignores = True\n\
+warn_no_return = True\n\
+strict_equality = True\n\
+' > /home/shadow/mypy.ini
+
+# Create default ruff.toml
+RUN echo '[tool.ruff]\n\
+line-length = 100\n\
+target-version = "py311"\n\
+\n\
+[tool.ruff.lint]\n\
+select = [\n\
+    "E",   # pycodestyle errors\n\
+    "W",   # pycodestyle warnings\n\
+    "F",   # pyflakes\n\
+    "I",   # isort\n\
+    "B",   # flake8-bugbear\n\
+    "C4",  # flake8-comprehensions\n\
+    "UP",  # pyupgrade\n\
+]\n\
+ignore = [\n\
+    "E501",  # line too long (handled by formatter)\n\
+    "B008",  # function calls in argument defaults\n\
+]\n\
+' > /home/shadow/ruff.toml
+
+# Create default bandit configuration
+RUN echo '[bandit]\n\
+exclude_dirs = ["/test", "/tests", "/.venv", "/venv"]\n\
+skips = ["B101"]  # Skip assert_used in tests\n\
+' > /home/shadow/.bandit
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python3 -c "import sys; sys.exit(0)"
+
+# Keep container running
+CMD ["tail", "-f", "/dev/null"]

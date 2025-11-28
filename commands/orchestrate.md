@@ -1,17 +1,32 @@
 ---
-description: Orchestrate complex tasks by delegating to specialist agents (NEVER implement directly)
+description: Orchestrate complex tasks using RVGB architecture with PostgreSQL memory, Redis Blackboard, and Docker verification
 argument-hint: [task description]
 ---
 
-# ORCHESTRATION MODE v2.1 (Full Research Implementation)
+# ORCHESTRATION MODE v3.0 (RVGB - Recursive Verifying Graph-Blackboard)
 
 **Task:** $ARGUMENTS
 
 ---
 
-## MANDATORY BEHAVIOR - NO EXCEPTIONS
+## RVGB ARCHITECTURE OVERVIEW
 
-You are now the ORCHESTRATOR. You must follow these rules:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  RVGB: Recursive Verifying Graph-Blackboard                │
+│                                                             │
+│  PostgreSQL → Hybrid tiered memory (episodic + semantic)   │
+│  Redis → Blackboard for agent coordination                 │
+│  Docker → Shadow workspace for safe verification           │
+│  MCP → Memory server for tool-based access                 │
+│  Knowledge Graph → Temporal entity relationships           │
+│  Reflexion → Stored reflections + retrieval                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## MANDATORY BEHAVIOR - NO EXCEPTIONS
 
 ### RULE 1: NEVER WRITE CODE
 - You MUST NOT write any implementation code
@@ -25,9 +40,11 @@ Task(subagent_type="general-purpose", prompt="You are @[specialist]. [detailed t
 ```
 
 ### RULE 3: ALWAYS UPDATE MEMORY
-After completion, you MUST edit:
-- `/home/rnd/.claude/orchestrator/memory/learning_metrics.json`
-- `/home/rnd/.claude/orchestrator/memory/success_patterns.json` (if new patterns)
+After completion, you MUST:
+- Store episodic memory in PostgreSQL
+- Update knowledge graph entities/relations
+- Run memory consolidation on completion
+- Store reflections if failures occurred
 
 ### RULE 4: USE MODEL ROUTING
 Route tasks to appropriate model based on complexity:
@@ -37,640 +54,2464 @@ Route tasks to appropriate model based on complexity:
 
 ---
 
-## EXECUTION FLOW (ALL STEPS MANDATORY - AUTO-TRIGGERED)
+## EXECUTION FLOW (15-STEP RVGB PIPELINE)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  STEP 1: Load Tiered Memory (Core → Working)                │
-│  STEP 2: Context Compression (AST Repo Map)                 │
-│  STEP 3: Analyze & Plan (with Model Routing)                │
-│  STEP 4: Create Checkpoint (AUTO)                           │
-│  STEP 5: Git Worktree Isolation (Sandboxed)                 │
-│  STEP 6: Delegate to Agents (PARALLEL + Routed)             │
-│  STEP 7: TDD Loop - Test → Fix → Verify (3-STRIKE MAX)      │
-│  STEP 8: Multi-Perspective Review (AUTO - PARALLEL)         │
-│  STEP 9: Reflexion - Self-Critique & Fix (AUTO)             │
-│  STEP 10: Merge Worktree or Rollback                        │
-│  STEP 11: Update Memory (with Utility Scoring)              │
-│  STEP 12: Capture Knowledge (AUTO)                          │
-│  STEP 13: Retrospective (AUTO)                              │
-│  STEP 14: Report to User                                    │
+│  STEP 1: Initialize Infrastructure                          │
+│  STEP 2: Load Tiered Memory (PostgreSQL)                    │
+│  STEP 3: Retrieve Past Reflections                          │
+│  STEP 4: Context Compression (AST Repo Map)                 │
+│  STEP 5: Analyze & Plan (with Model Routing)                │
+│  STEP 6: Write Plan to Blackboard                           │
+│  STEP 7: Create Shadow Workspace (Docker)                   │
+│  STEP 8: Delegate to Agents (read/write Blackboard)         │
+│  STEP 9: Verification Gauntlet (in Shadow)                  │
+│  STEP 10: TDD Loop (3-strike max)                           │
+│  STEP 11: Multi-Perspective Review                          │
+│  STEP 12: Reflexion - Generate & Store                      │
+│  STEP 13: Commit Shadow or Rollback                         │
+│  STEP 14: Memory Consolidation ("Sleep")                    │
+│  STEP 15: Report to User                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### STEP 1: Load Tiered Memory (MemGPT-inspired)
+## STEP 1: Initialize Infrastructure
 
-**TIER 1 - Core Memory (ALWAYS load):**
-```
-Read /home/rnd/.claude/orchestrator/memory/learning_metrics.json
-```
-Contains: Total experience, common technologies, success rate
+**Goal:** Ensure all RVGB components are running and accessible
 
-**TIER 2 - Working Memory (Load relevant patterns):**
-```
-Read /home/rnd/.claude/orchestrator/memory/success_patterns.json
-Read /home/rnd/.claude/orchestrator/memory/failure_patterns.json
-```
-Filter by: Task type, detected technologies (only load matching patterns)
-
-**TIER 3 - Archival Memory (On-demand retrieval):**
-```
-# Only if needed during execution:
-Grep /home/rnd/.claude/orchestrator/knowledge/ for specific solutions
-```
-Contains: Historical solutions, edge cases, complex fixes
-
-**Memory Selection Logic:**
-- Rust task → Load only `category: "rust-*"` patterns
-- Frontend task → Load only `category: "frontend-*"` patterns
-- Mixed task → Load primary + secondary patterns (max 5 each)
-
-### STEP 2: Context Compression (AST Repo Map) (Aider/Factory-inspired)
-
-**Goal:** Minimize tokens while maximizing relevant context
-
-**STEP 2.1 - Build Repository Map:**
-```
-# Scan project structure
-Glob **/*.{rs,py,ts,tsx,js,jsx} to find all source files
-
-# For each file, extract ONLY:
-- Function/method signatures (not implementations)
-- Class/struct definitions (not bodies)
-- Import statements
-- Export statements
-```
-
-**STEP 2.2 - PageRank Relevance Scoring:**
-```
-# Build call graph mentally:
-- Which files import which?
-- Which functions call which?
-- Score files by centrality (more connections = higher relevance)
-
-# Priority loading:
-1. Entry points (main.rs, index.ts, app.py)
-2. Files mentioned in task description
-3. Files with highest call-graph centrality
-4. Skip: tests, configs, generated files
-```
-
-**STEP 2.3 - Token Budget Management:**
-```
-TARGET: Keep context under 50K tokens
-
-If context exceeds budget:
-├─ Level 1: Load only signatures, not implementations
-├─ Level 2: Summarize large files: "auth.ts: handles JWT validation, 12 functions"
-├─ Level 3: Drop low-relevance files entirely
-└─ Level 4: Request user to narrow scope
-```
-
-**Context Summary Format:**
-```markdown
-## Repo Map (compressed)
-- **Entry:** src/main.rs (async runtime, 3 modules)
-- **Core:** src/engine.rs (OrderEngine struct, 8 methods)
-- **Related:** src/types.rs (Order, Fill, Quote types)
-- **Skip:** tests/, examples/, benches/
-Token budget: 12,450 / 50,000
-```
-
-### STEP 3: Analyze & Plan (with Model Routing)
-
-**Planning Phase:**
-```
-- Based on context, identify required work
-- Create TodoWrite plan with all phases
-- Determine which agents needed
-- Identify parallel vs sequential tasks
-```
-
-**Model Routing Decision Matrix:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│  TASK TYPE                    │  MODEL   │  COST  │ WHY    │
-├───────────────────────────────┼──────────┼────────┼────────┤
-│  Architecture decisions       │  opus    │  $$$$  │ Critical│
-│  Complex algorithm design     │  opus    │  $$$$  │ Nuanced │
-│  Security-critical code       │  opus    │  $$$$  │ Safety  │
-├───────────────────────────────┼──────────┼────────┼────────┤
-│  Standard implementation      │  sonnet  │  $$    │ Balance │
-│  Bug fixes (moderate)         │  sonnet  │  $$    │ Standard│
-│  Code review                  │  sonnet  │  $$    │ Judgment│
-│  Test writing                 │  sonnet  │  $$    │ Coverage│
-├───────────────────────────────┼──────────┼────────┼────────┤
-│  Simple refactoring           │  haiku   │  $     │ Fast    │
-│  Formatting/linting           │  haiku   │  $     │ Trivial │
-│  Boilerplate generation       │  haiku   │  $     │ Template│
-│  Documentation updates        │  haiku   │  $     │ Simple  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Route Assignment:**
-For each task in the plan, assign model:
-```
-Task: "Design new order matching engine" → opus (architecture)
-Task: "Implement limit order handler" → sonnet (implementation)
-Task: "Add logging statements" → haiku (boilerplate)
-```
-
-**Cost Tracking:**
-```
-Estimated cost for this orchestration:
-- opus tasks: 2 × ~$0.15 = $0.30
-- sonnet tasks: 5 × ~$0.03 = $0.15
-- haiku tasks: 3 × ~$0.001 = $0.003
-- Total estimate: ~$0.45
-```
-
-### STEP 4: Create Checkpoint (AUTO-TRIGGERED)
-```
-BEFORE any code changes:
-- Create checkpoint: orchestrate-[timestamp]
-- Save current state of files that will be modified
-- Location: /home/rnd/.claude/orchestrator/checkpoints/
-```
-This enables `/rollback` if something breaks.
-
-### STEP 5: Git Worktree Isolation (Cursor-inspired)
-
-**Goal:** Isolate all changes in a sandboxed worktree to prevent breaking main branch
-
-**STEP 5.1 - Create Isolated Worktree:**
+### 1.1 Check Environment Variables
 ```bash
-# Generate unique task ID
-TASK_ID="task-$(date +%s)"
+# Required environment variables:
+# - DATABASE_URL: PostgreSQL connection string
+# - REDIS_URL: Redis connection string (default: redis://localhost:6379)
+# - DOCKER_HOST: Docker daemon (default: unix:///var/run/docker.sock)
+# - MCP_MEMORY_SERVER_PORT: MCP server port (default: 3000)
 
-# Create worktree branch
-git worktree add -b $TASK_ID .worktrees/$TASK_ID
-
-# All agent work happens in .worktrees/$TASK_ID/
+# Validate each is set and accessible
+echo "Checking DATABASE_URL..."
+echo "Checking REDIS_URL..."
+echo "Checking Docker daemon..."
+echo "Checking MCP Memory Server..."
 ```
 
-**STEP 5.2 - Working Directory Setup:**
-```
-WORKTREE_PATH=".worktrees/$TASK_ID"
-
-# Agents receive this path in their context:
-"IMPORTANT: All file edits must be in $WORKTREE_PATH/
-Do NOT modify files in the main working directory."
-```
-
-**STEP 5.3 - Isolation Benefits:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│  ✅ Main branch stays clean during work                     │
-│  ✅ Multiple orchestrations can run in parallel             │
-│  ✅ Easy rollback: just delete worktree                     │
-│  ✅ Safe experimentation without risk                       │
-│  ✅ Can compare worktree vs main at any time                │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**SKIP Worktree if:**
-- Project is not a git repository
-- User says "direct mode" or "no isolation"
-- Task is read-only (analysis, review only)
-
-### STEP 6: Delegate to Agents (PARALLEL + Model Routed)
-
-Select specialist based on tech stack:
-
-| Detect | Spawn Agent |
-|--------|-------------|
-| `.rs` files | `@rust-pro` |
-| `.py` files | `@python-pro` |
-| `.ts/.tsx` files | `@typescript-pro` |
-| React/Next.js | `@frontend-developer` |
-| SQL/database | `@database-admin` |
-| Security | `@security-auditor` |
-
-**MODEL-ROUTED TASK CALLS:**
-```xml
-<!-- Architecture task → opus -->
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="model">opus</parameter>
-  <parameter name="prompt">@rust-pro: Design the order matching engine architecture...
-  WORKTREE: $WORKTREE_PATH</parameter>
-</invoke>
-
-<!-- Implementation task → sonnet (default) -->
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="model">sonnet</parameter>
-  <parameter name="prompt">@rust-pro: Implement the limit order handler...
-  WORKTREE: $WORKTREE_PATH</parameter>
-</invoke>
-
-<!-- Simple task → haiku -->
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="model">haiku</parameter>
-  <parameter name="prompt">@rust-pro: Add debug logging to order flow...
-  WORKTREE: $WORKTREE_PATH</parameter>
-</invoke>
-```
-
-**PARALLEL EXECUTION:** Independent tasks = ONE message with multiple Task calls
-```xml
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="model">sonnet</parameter>
-  <parameter name="prompt">@rust-pro: [task with full context]
-  WORKTREE: $WORKTREE_PATH</parameter>
-</invoke>
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="model">sonnet</parameter>
-  <parameter name="prompt">@frontend-developer: [task with full context]
-  WORKTREE: $WORKTREE_PATH</parameter>
-</invoke>
-```
-
-### STEP 7: TDD Loop - Test → Fix → Verify (3-STRIKE MAX) (MetaGPT-inspired)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  STRIKE 1: Initial Test                                     │
-│  ├─ @test-writer: Generate tests                            │
-│  ├─ Run tests via Bash                                      │
-│  └─ If PASS → Continue to STEP 7                            │
-│      If FAIL → Strike 2                                     │
-│                                                             │
-│  STRIKE 2: First Fix Attempt                                │
-│  ├─ Analyze failure message                                 │
-│  ├─ @[original-agent]: Fix the failing code                 │
-│  ├─ Re-run tests                                            │
-│  └─ If PASS → Continue to STEP 7                            │
-│      If FAIL → Strike 3                                     │
-│                                                             │
-│  STRIKE 3: Expert Escalation                                │
-│  ├─ Spawn @code-reviewer to analyze root cause              │
-│  ├─ @[original-agent]: Apply reviewer's fix                 │
-│  ├─ Re-run tests                                            │
-│  └─ If PASS → Continue to STEP 7                            │
-│      If FAIL → HALT & Report to User                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Test Generation:**
-```
-Task(subagent_type="general-purpose", prompt="@test-writer: Write comprehensive tests for [implemented code]. Cover: happy path, edge cases, error handling...")
-```
-
-**On Test Failure - Pass failure context to fixer:**
-```
-Task(subagent_type="general-purpose", prompt="@[original-agent]: Fix failing test.
-TEST OUTPUT: [paste test failure]
-EXPECTED: [what should happen]
-ACTUAL: [what happened]
-Fix the root cause, not symptoms.")
-```
-
-**After 3 Strikes - Report failure:**
-```
-⚠️ TDD LOOP EXHAUSTED (3/3 strikes)
-- Original error: [first failure]
-- Strike 2 attempt: [what was tried]
-- Strike 3 attempt: [what was tried]
-- Recommended: [manual debugging needed / architectural issue]
-```
-
-### STEP 8: Multi-Perspective Review (AUTO-TRIGGERED - PARALLEL)
-```xml
-<!-- ALL 5 reviewers in ONE message -->
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="prompt">@security-auditor: Review for vulnerabilities...</parameter>
-</invoke>
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="prompt">@architecture-reviewer: Review for modularity...</parameter>
-</invoke>
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="prompt">@performance-reviewer: Review for bottlenecks...</parameter>
-</invoke>
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="prompt">@simplicity-reviewer: Review for over-engineering...</parameter>
-</invoke>
-<invoke name="Task">
-  <parameter name="subagent_type">general-purpose</parameter>
-  <parameter name="prompt">@code-reviewer: Review for quality...</parameter>
-</invoke>
-```
-
-### STEP 9: Reflexion - Self-Critique & Fix (Reflexion Pattern)
-
-**Before finalizing, critically evaluate the work:**
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  SELF-CRITIQUE CHECKLIST                                    │
-│  ├─ Does the solution actually solve the stated problem?    │
-│  ├─ Are there any obvious bugs or edge cases missed?        │
-│  ├─ Is it over-engineered for the task?                     │
-│  ├─ Did reviewers flag any critical issues?                 │
-│  └─ Would I be confident deploying this?                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**If ANY critical issues found:**
-```
-Task(subagent_type="general-purpose", prompt="@[original-agent]:
-REFLEXION FEEDBACK:
-- Issue: [what's wrong]
-- Impact: [why it matters]
-- Fix: [specific change needed]
-
-Apply this fix before we finalize.")
-```
-
-**Learning Integration:**
-- Add self-discovered issues to failure_patterns.json
-- Note: "Caught via reflexion before user saw"
-- This builds pattern recognition for future tasks
-
----
-
-### STEP 10: Merge Worktree or Rollback
-
-**Decision Point - Based on previous steps:**
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  IF all conditions pass:                                    │
-│  ├─ TDD Loop: All tests passing                             │
-│  ├─ Reviews: No critical (🔴) issues                        │
-│  └─ Reflexion: No blocking concerns                         │
-│                                                             │
-│  THEN → MERGE worktree to main                              │
-│                                                             │
-│  IF any critical failure:                                   │
-│  ├─ TDD Loop exhausted (3 strikes)                          │
-│  ├─ Security review found critical vulnerability            │
-│  └─ Reflexion identified fundamental flaw                   │
-│                                                             │
-│  THEN → ROLLBACK (delete worktree, keep main clean)         │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**MERGE (Success Path):**
+### 1.2 PostgreSQL Connection
 ```bash
-# Switch to main branch
-cd $PROJECT_ROOT
-git checkout main
+# Test PostgreSQL connection
+psql $DATABASE_URL -c "SELECT 1;" 2>&1
 
-# Merge the worktree branch
-git merge $TASK_ID --no-ff -m "Merge: [task description]"
+# Verify required tables exist:
+# - episodic_memory (raw episodes from orchestration runs)
+# - semantic_memory (consolidated patterns and knowledge)
+# - procedural_memory (reflections and learned behaviors)
+# - entities (knowledge graph nodes)
+# - relations (knowledge graph edges)
 
-# Clean up worktree
-git worktree remove .worktrees/$TASK_ID
-git branch -d $TASK_ID
+# If tables missing, create them (run schema migration)
 ```
 
-**ROLLBACK (Failure Path):**
+**PostgreSQL Schema:**
+```sql
+-- Episodic Memory (raw experiences)
+CREATE TABLE IF NOT EXISTS episodic_memory (
+    id SERIAL PRIMARY KEY,
+    pipeline_run_id VARCHAR(64) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    event_type VARCHAR(32) NOT NULL, -- 'task_start', 'agent_call', 'verification', etc.
+    agent_name VARCHAR(64),
+    task_description TEXT,
+    context JSONB, -- Full context snapshot
+    result JSONB, -- Outcome, errors, metrics
+    importance FLOAT DEFAULT 0.5, -- 0.0-1.0
+    last_accessed TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Semantic Memory (consolidated patterns)
+CREATE TABLE IF NOT EXISTS semantic_memory (
+    id SERIAL PRIMARY KEY,
+    pattern_name VARCHAR(128) UNIQUE NOT NULL,
+    category VARCHAR(64) NOT NULL,
+    description TEXT,
+    key_elements JSONB,
+    success_rate FLOAT DEFAULT 1.0,
+    times_used INTEGER DEFAULT 1,
+    last_used TIMESTAMPTZ DEFAULT NOW(),
+    utility_score FLOAT GENERATED ALWAYS AS (
+        (times_used * 0.4) + (success_rate * 0.3) +
+        (EXTRACT(EPOCH FROM (NOW() - last_used)) / 3600 * 0.3)
+    ) STORED
+);
+
+-- Procedural Memory (reflections)
+CREATE TABLE IF NOT EXISTS procedural_memory (
+    id SERIAL PRIMARY KEY,
+    reflection_text TEXT NOT NULL,
+    failure_context JSONB, -- What failed, why, how fixed
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    relevance_tags TEXT[], -- For retrieval
+    applied_count INTEGER DEFAULT 0,
+    last_applied TIMESTAMPTZ
+);
+
+-- Knowledge Graph: Entities
+CREATE TABLE IF NOT EXISTS entities (
+    id SERIAL PRIMARY KEY,
+    entity_type VARCHAR(64) NOT NULL, -- 'file', 'function', 'module', 'component'
+    entity_name VARCHAR(255) NOT NULL,
+    metadata JSONB,
+    first_seen TIMESTAMPTZ DEFAULT NOW(),
+    last_modified TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(entity_type, entity_name)
+);
+
+-- Knowledge Graph: Relations
+CREATE TABLE IF NOT EXISTS relations (
+    id SERIAL PRIMARY KEY,
+    source_entity_id INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+    relation_type VARCHAR(64) NOT NULL, -- 'imports', 'calls', 'uses', 'depends_on'
+    target_entity_id INTEGER REFERENCES entities(id) ON DELETE CASCADE,
+    weight FLOAT DEFAULT 1.0, -- Importance of relationship
+    first_seen TIMESTAMPTZ DEFAULT NOW(),
+    last_seen TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(source_entity_id, relation_type, target_entity_id)
+);
+
+-- Indexes for fast retrieval
+CREATE INDEX IF NOT EXISTS idx_episodic_pipeline ON episodic_memory(pipeline_run_id);
+CREATE INDEX IF NOT EXISTS idx_episodic_timestamp ON episodic_memory(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_episodic_importance ON episodic_memory(importance DESC);
+CREATE INDEX IF NOT EXISTS idx_semantic_category ON semantic_memory(category);
+CREATE INDEX IF NOT EXISTS idx_semantic_utility ON semantic_memory(utility_score DESC);
+CREATE INDEX IF NOT EXISTS idx_procedural_tags ON procedural_memory USING GIN(relevance_tags);
+CREATE INDEX IF NOT EXISTS idx_entities_type_name ON entities(entity_type, entity_name);
+CREATE INDEX IF NOT EXISTS idx_relations_source ON relations(source_entity_id);
+CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target_entity_id);
+```
+
+### 1.3 Redis Blackboard Connection
 ```bash
-# Force remove the worktree (discards all changes)
-git worktree remove .worktrees/$TASK_ID --force
-git branch -D $TASK_ID
+# Test Redis connection
+redis-cli -u $REDIS_URL PING 2>&1
 
-# Report to user
-echo "⚠️ Worktree rolled back. Main branch unchanged."
-echo "Reason: [TDD failure / Critical security issue / etc.]"
+# Initialize Blackboard structures:
+# - artifacts:[pipeline_id]:* (HASH) - Stores artifacts (plan, code, tests)
+# - locks:[pipeline_id]:* (STRING with expiry) - File-level locks
+# - status:[pipeline_id] (HASH) - Pipeline status tracking
+# - agents:[pipeline_id]:* (LIST) - Agent activity log
 ```
 
-**SKIP if:**
-- Worktree was not created (non-git project, direct mode)
-- User requests "keep worktree" for manual review
-
----
-
-### STEP 11: Update Memory (with Utility Scoring)
-
-**ALWAYS update (every project):**
-```
-Edit /home/rnd/.claude/orchestrator/memory/learning_metrics.json:
-  - Increment total_projects
-  - Update last_updated to today
-  - Add technologies used to most_common_technologies
-```
-
-**UTILITY SCORING for patterns:**
-Each pattern has a utility score calculated as:
-```
-utility = (times_used * 0.4) + (success_rate * 0.3) + (recency * 0.3)
-```
-
-**When USING an existing pattern:**
-```json
-// Increment usage counter
-"times_used": 5 → 6,
-"last_used": "2024-11-28",
-"utility_score": recalculate
-```
-
-**When ADDING a new pattern:**
-```json
+**Redis Blackboard Schema:**
+```python
+# Artifact structure (stored as JSON in Redis Hash)
 {
-  "id": "pattern-xxx",
-  "name": "...",
-  "category": "...",
-  "times_used": 1,
-  "last_used": "2024-11-28",
-  "success_rate": 1.0,
-  "utility_score": 0.7  // Initial score
+    "artifact_id": "plan_v1",
+    "artifact_type": "PLAN|CODE|TEST|REVIEW|REFLECTION",
+    "content": "...",
+    "created_by": "orchestrator|agent_name",
+    "created_at": "2025-11-29T10:30:00Z",
+    "version": 1,
+    "dependencies": ["artifact_id_1", "artifact_id_2"]
 }
+
+# Lock structure (Redis String with TTL)
+Key: locks:[pipeline_id]:src/main.py
+Value: agent_name
+TTL: 300 seconds (auto-release)
+
+# Status tracking (Redis Hash)
+Key: status:[pipeline_id]
+Fields:
+  - phase: "planning|implementation|verification|review|complete"
+  - progress: "0-100"
+  - active_agents: "agent1,agent2"
+  - errors: "0"
 ```
 
-**Memory Consolidation (runs every 10 projects):**
-```
-IF learning_metrics.total_projects % 10 === 0:
-  - Archive patterns with utility_score < 0.3 to archival/
-  - Merge similar patterns (same category, overlapping elements)
-  - Promote high-utility patterns (score > 0.8) to "core_patterns"
+### 1.4 Docker Shadow Workspace
+```bash
+# Check if Docker is running
+docker info 2>&1
+
+# Build base shadow workspace image (if not exists)
+# This is a lightweight container with:
+# - Git
+# - Common build tools (cargo, npm, pip, etc.)
+# - Testing frameworks
+# - Linters/formatters
+
+# Check for existing image
+if ! docker images | grep -q "rvgb-shadow-workspace"; then
+    echo "Building shadow workspace image..."
+    # Build from Dockerfile (if available) or use alpine + tools
+fi
 ```
 
-**ONLY IF NEW PATTERN discovered:**
-```
-Edit /home/rnd/.claude/orchestrator/memory/success_patterns.json:
-  - Add pattern with: id, name, category, description
-  - Include: key_elements, common_tools, file_structure
-  - Set times_used: 1, success_rate: 1.0, utility_score: 0.7
+**Shadow Workspace Dockerfile:**
+```dockerfile
+FROM alpine:3.19
+
+# Install base tools
+RUN apk add --no-cache \
+    git \
+    bash \
+    curl \
+    python3 py3-pip \
+    nodejs npm \
+    rust cargo \
+    go \
+    openjdk11 \
+    && rm -rf /var/cache/apk/*
+
+# Install testing frameworks
+RUN pip3 install pytest pytest-cov mypy ruff bandit --break-system-packages
+RUN npm install -g jest @typescript-eslint/parser eslint
+RUN cargo install cargo-test
+
+# Set working directory
+WORKDIR /workspace
+
+# Entry point: run verification gauntlet
+COPY verify.sh /usr/local/bin/verify
+RUN chmod +x /usr/local/bin/verify
+
+CMD ["/bin/bash"]
 ```
 
-**ONLY IF NEW FAILURE TYPE encountered:**
-```
-Edit /home/rnd/.claude/orchestrator/memory/failure_patterns.json:
-  - Add anti-pattern with: id, name, category
-  - Include: common_issues, warning_signs, solutions
-  - Document root cause + how it was caught (TDD/review/reflexion)
+### 1.5 MCP Memory Server
+```bash
+# Check if MCP Memory Server is running
+curl -s http://localhost:${MCP_MEMORY_SERVER_PORT:-3000}/health 2>&1
+
+# If not running, start it (or skip if not installed)
+# MCP Memory Server provides tool-based access to PostgreSQL memory
 ```
 
-**SKIP memory update for patterns if:**
-- Task used existing known pattern (but DO increment times_used)
-- No new insights discovered
-- Routine task with nothing novel
-
-### STEP 12: Capture Knowledge (AUTO-TRIGGERED)
+**MCP Memory Tools Available:**
 ```
-If significant solution implemented:
-- Create knowledge file at /home/rnd/.claude/orchestrator/knowledge/[category]/[slug].md
-- Categories: bug-fixes, performance, architecture, integration, patterns
+- search_memory(query, limit=5) → Search episodic + semantic memory
+- get_similar_patterns(context) → Retrieve patterns by similarity
+- store_episode(event_type, context, result) → Store new episode
+- get_relevant_reflections(context) → Retrieve past reflections
+- update_knowledge_graph(entity, relation, target) → Update graph
+- consolidate_memory(pipeline_run_id) → Trigger consolidation
 ```
 
-### STEP 13: Retrospective (AUTO-TRIGGERED)
-```
-Analyze:
-- What went well (agents that succeeded)
-- What went poorly (any failures or retries)
-- Lessons learned
-- Add to failure_patterns.json if issues encountered
-```
-
-### STEP 14: Report to User
+### 1.6 Infrastructure Health Report
 ```markdown
-## Orchestration Complete (v2.1)
+## Infrastructure Status
+- ✅/❌ PostgreSQL: [connected/disconnected] (tables: X)
+- ✅/❌ Redis Blackboard: [connected/disconnected]
+- ✅/❌ Docker Daemon: [running/stopped]
+- ✅/❌ Shadow Workspace Image: [built/missing]
+- ✅/⚠️/❌ MCP Memory Server: [running/not installed/error]
 
-### Task
-[What was requested]
-
-### Worktree Status
-- Branch: `task-[timestamp]`
-- Status: ✅ MERGED / ⚠️ ROLLED BACK / ➖ Direct Mode
-- Reason: [if rolled back, why]
-
-### Checkpoint
-`orchestrate-[timestamp]` (rollback available)
-
-### Implementation
-| Agent | Task | Model | Status |
-|-------|------|-------|--------|
-| [agent] | [task] | opus/sonnet/haiku | ✅/❌ |
-
-### Model Routing Summary
-| Model | Tasks | Est. Cost |
-|-------|-------|-----------|
-| opus  | 2     | $0.30     |
-| sonnet| 5     | $0.15     |
-| haiku | 3     | $0.003    |
-| **Total** |   | **$0.45** |
-
-### TDD Loop Results
-| Strike | Action | Result |
-|--------|--------|--------|
-| 1 | Initial tests | ✅ PASS / ❌ FAIL |
-| 2 | Fix attempt (if needed) | ✅/❌/➖ |
-| 3 | Expert escalation (if needed) | ✅/❌/➖ |
-
-### Review Summary
-| Reviewer | Findings | Severity |
-|----------|----------|----------|
-| security | [summary] | 🔴/🟡/🟢 |
-| architecture | [summary] | 🔴/🟡/🟢 |
-| performance | [summary] | 🔴/🟡/🟢 |
-| simplicity | [summary] | 🔴/🟡/🟢 |
-| code-quality | [summary] | 🔴/🟡/🟢 |
-
-### Reflexion Self-Critique
-- Issues caught: [list any self-discovered issues]
-- Fixes applied: [list fixes made before finalization]
-
-### Context Compression Stats
-- Files scanned: [X]
-- Files loaded: [Y] (compressed)
-- Token budget: [used]/50,000
-
-### Knowledge Captured
-[Link to knowledge file if created]
-
-### Retrospective
-- ✅ Successes: [list]
-- ⚠️ Issues: [list]
-- 📝 Lessons: [list]
-
-### Memory Updated
-- learning_metrics.json ✅
-- success_patterns.json ✅/➖ (utility: X.X)
-- failure_patterns.json ✅/➖
+**Fallback Mode:**
+If any component unavailable, fall back to:
+- PostgreSQL → JSON files in /home/rnd/.claude/orchestrator/memory/
+- Redis → In-memory dict (no persistence)
+- Docker → Direct workspace (no isolation)
+- MCP → Direct PostgreSQL queries via psql
 ```
+
+**SKIP Infrastructure Check if:**
+- User says "offline mode" or "no infrastructure"
+- Quick mode enabled
 
 ---
 
-## TASK TOOL TEMPLATE
+## STEP 2: Load Tiered Memory (PostgreSQL)
 
+**Goal:** Retrieve relevant past experiences to inform current task
+
+### 2.1 Memory Retrieval with Scoring
+
+**Scoring Formula:**
 ```
-Task(
-  subagent_type="general-purpose",
-  prompt="You are @[AGENT_NAME], expert in [DOMAIN].
+Score = 0.5 * Relevance + 0.3 * Importance + 0.2 * Recency
 
-TASK: [What to implement]
+Where:
+- Relevance: Semantic similarity to current task (0.0-1.0)
+- Importance: Stored importance value (0.0-1.0)
+- Recency = e^(-0.995 * hours_since_access)
+```
 
-CONTEXT:
-- [Project structure from Step 2]
-- [Existing code patterns]
-- [Dependencies]
+### 2.2 Episodic Memory Retrieval
 
-REQUIREMENTS:
-- [Specific requirement 1]
-- [Specific requirement 2]
+**Query episodic_memory table:**
+```sql
+-- Retrieve top 10 relevant episodes
+SELECT
+    id,
+    event_type,
+    agent_name,
+    task_description,
+    context,
+    result,
+    importance,
+    EXTRACT(EPOCH FROM (NOW() - last_accessed)) / 3600 AS hours_since,
+    EXP(-0.995 * EXTRACT(EPOCH FROM (NOW() - last_accessed)) / 3600) AS recency_score
+FROM episodic_memory
+WHERE
+    -- Filter by relevance (simple keyword match for now)
+    task_description ILIKE '%[detected_keywords]%'
+    OR context::text ILIKE '%[detected_keywords]%'
+ORDER BY
+    (0.5 * 0.8 + 0.3 * importance + 0.2 * EXP(-0.995 * EXTRACT(EPOCH FROM (NOW() - last_accessed)) / 3600)) DESC
+LIMIT 10;
 
-Implement the complete solution."
+-- Update last_accessed for retrieved episodes
+UPDATE episodic_memory
+SET last_accessed = NOW()
+WHERE id IN ([retrieved_ids]);
+```
+
+**Using MCP (if available):**
+```
+mcp__memory__search_memory(
+    query="implement order matching engine with websockets",
+    limit=5
 )
 ```
 
+### 2.3 Semantic Memory Retrieval
+
+**Query semantic_memory table:**
+```sql
+-- Retrieve patterns by category and utility
+SELECT
+    pattern_name,
+    category,
+    description,
+    key_elements,
+    success_rate,
+    times_used,
+    utility_score
+FROM semantic_memory
+WHERE
+    category = '[detected_category]' -- e.g., 'rust-async', 'frontend-react'
+    AND utility_score > 0.3 -- Minimum utility threshold
+ORDER BY
+    utility_score DESC
+LIMIT 5;
+
+-- Update usage stats for retrieved patterns
+UPDATE semantic_memory
+SET last_used = NOW()
+WHERE pattern_name IN ([retrieved_patterns]);
+```
+
+**Using MCP (if available):**
+```
+mcp__memory__get_similar_patterns(
+    context="rust websocket order matching"
+)
+```
+
+### 2.4 Memory Hierarchy
+
+**TIER 1 - Always Load (Core Context):**
+- Total orchestrations run
+- Common technologies encountered
+- Overall success rate
+- Recent failure patterns
+
+**TIER 2 - Conditionally Load (Relevant Patterns):**
+- Patterns matching detected category
+- Episodes with high relevance score (>0.7)
+- High-utility patterns (utility_score > 0.8)
+
+**TIER 3 - On-Demand (Archival):**
+- Older episodes (>30 days old)
+- Low-utility patterns (utility_score < 0.3)
+- Edge cases and rare scenarios
+
+### 2.5 Memory Loading Summary
+
+```markdown
+## Memory Loaded
+**Episodic Memory:**
+- Retrieved: 7 episodes (avg score: 0.82)
+- Most relevant: "WebSocket connection pooling fix" (score: 0.94)
+- Total episodes in DB: 1,247
+
+**Semantic Memory:**
+- Patterns loaded: 4
+  - rust-async-websockets (utility: 0.91, used: 12x)
+  - order-matching-algorithms (utility: 0.87, used: 8x)
+  - error-handling-async (utility: 0.76, used: 15x)
+  - docker-compose-setup (utility: 0.68, used: 5x)
+
+**Fallback (if PostgreSQL unavailable):**
+- Loading from JSON: /home/rnd/.claude/orchestrator/memory/
+```
+
 ---
 
-## MCP INTEGRATION (When Available)
+## STEP 3: Retrieve Past Reflections
 
-**Use MCP servers for enhanced capabilities:**
+**Goal:** Learn from past failures to avoid repeating mistakes
 
-### Context7 - Documentation Lookup
-```
-When agent needs framework/library docs:
-mcp__context7__resolve-library-id("react")
-mcp__context7__get-library-docs("/vercel/next.js", topic="routing")
-```
-Saves tokens by fetching only relevant docs instead of web search.
+### 3.1 Reflection Retrieval
 
-### Playwright - UI Testing
-```
-When testing frontend changes:
-mcp__playwright__browser_navigate("http://localhost:3000")
-mcp__playwright__browser_snapshot()
-mcp__playwright__browser_click(element="Submit button", ref="btn-submit")
-```
-Enables visual verification of UI changes.
+**Query procedural_memory table:**
+```sql
+-- Retrieve reflections by relevance tags
+SELECT
+    id,
+    reflection_text,
+    failure_context,
+    created_at,
+    applied_count
+FROM procedural_memory
+WHERE
+    -- Match by tags (array overlap)
+    relevance_tags && ARRAY['[detected_tag_1]', '[detected_tag_2]']::TEXT[]
+ORDER BY
+    applied_count ASC, -- Prefer less-used reflections (avoid over-fitting)
+    created_at DESC     -- Prefer recent learnings
+LIMIT 3;
 
-### Memory MCP (Future)
+-- Update applied_count for retrieved reflections
+UPDATE procedural_memory
+SET
+    applied_count = applied_count + 1,
+    last_applied = NOW()
+WHERE id IN ([retrieved_ids]);
 ```
-# When mcp-memory-server is configured:
-mcp__memory__create_entity("OrderEngine", "component")
-mcp__memory__create_relation("OrderEngine", "uses", "WebSocket")
-mcp__memory__search("order matching algorithms")
-```
-Enables knowledge graph for complex project relationships.
 
-**MCP Usage Policy:**
-- Prefer MCP tools over Bash/direct calls when available
-- Fall back to standard tools if MCP server unavailable
-- Log MCP usage in retrospective for pattern analysis
+**Using MCP (if available):**
+```
+mcp__memory__get_relevant_reflections(
+    context="async rust websocket error handling"
+)
+```
+
+### 3.2 Inject Reflections into Agent Context
+
+**Format reflections for agent prompts:**
+```markdown
+## PAST LEARNINGS (Reflexion)
+These are reflections from similar tasks. Learn from them:
+
+**Reflection 1:** [reflection_text]
+- Failure: [failure_context.what_failed]
+- Root Cause: [failure_context.root_cause]
+- Fix: [failure_context.fix_applied]
+- Lesson: [failure_context.lesson]
+
+**Reflection 2:** [...]
+```
+
+**Reflection Example:**
+```json
+{
+    "reflection_text": "When implementing async WebSocket handlers in Rust, always use bounded channels (not unbounded) to prevent memory exhaustion under high load.",
+    "failure_context": {
+        "what_failed": "WebSocket server crashed after 10K concurrent connections",
+        "root_cause": "Unbounded mpsc channel accumulated messages faster than processing",
+        "fix_applied": "Changed to tokio::sync::mpsc::channel(1000)",
+        "lesson": "Always bound async channels with reasonable capacity"
+    },
+    "relevance_tags": ["rust", "async", "websocket", "memory", "channels"],
+    "applied_count": 2,
+    "created_at": "2025-11-15T14:20:00Z"
+}
+```
+
+### 3.3 Reflection Summary
+
+```markdown
+## Reflections Retrieved
+- **3 reflections** loaded from procedural memory
+- Tags matched: rust, async, websocket, error-handling
+- Most relevant: "Always bound async channels" (applied 2x)
+- Injected into agent prompts for awareness
+```
+
+---
+
+## STEP 4: Context Compression (AST Repo Map)
+
+**Goal:** Minimize tokens while maximizing relevant context
+
+### 4.1 Build Repository Map
+
+**Scan project structure:**
+```bash
+# Find all source files
+Glob **/*.{rs,py,ts,tsx,js,jsx,go,java}
+
+# For each file, extract:
+# - Function/method signatures (not implementations)
+# - Class/struct definitions (not bodies)
+# - Import/export statements
+# - Type definitions
+```
+
+**AST Extraction (example for Rust):**
+```rust
+// src/engine.rs (actual 500 lines)
+// Compressed to:
+pub struct OrderEngine { /* 8 fields */ }
+impl OrderEngine {
+    pub fn new(config: Config) -> Self;
+    pub async fn process_order(&mut self, order: Order) -> Result<Fill>;
+    pub async fn match_orders(&self) -> Vec<Match>;
+    // ... 5 more methods
+}
+```
+
+### 4.2 PageRank Relevance Scoring
+
+**Build call graph:**
+```
+Entry points (weight: 1.0):
+- src/main.rs → imports src/engine.rs (0.8)
+- src/engine.rs → imports src/types.rs (0.6)
+- src/types.rs → imports src/utils.rs (0.4)
+
+Centrality scores:
+- src/engine.rs: 0.95 (highest, many imports)
+- src/types.rs: 0.80 (shared types)
+- src/main.rs: 0.75 (entry point)
+- src/utils.rs: 0.45 (utility functions)
+- tests/*.rs: 0.20 (low priority)
+```
+
+### 4.3 Token Budget Management
+
+**Target: 50K tokens**
+
+```
+Priority loading:
+1. Entry points (main.rs, index.ts) - FULL
+2. Files mentioned in task - FULL
+3. High-centrality files - SIGNATURES ONLY
+4. Low-centrality files - SUMMARY ONLY
+5. Tests/configs - SKIP
+
+If exceeds budget:
+- Level 1: Load only signatures (no implementations)
+- Level 2: Summarize large files
+- Level 3: Drop low-relevance files
+- Level 4: Request user to narrow scope
+```
+
+### 4.4 Context Summary
+
+```markdown
+## Repository Map (Compressed)
+**Entry Points:**
+- src/main.rs (async runtime, 3 modules) - 450 tokens
+- src/engine.rs (OrderEngine struct, 8 methods) - 1,200 tokens
+
+**Core Modules:**
+- src/types.rs (Order, Fill, Quote types) - 300 tokens
+- src/websocket.rs (WebSocket handler, 5 methods) - 800 tokens
+
+**Related:**
+- src/utils.rs (summary: logging, time utils) - 50 tokens
+- src/config.rs (summary: env loading) - 40 tokens
+
+**Skipped:**
+- tests/ (24 files)
+- benches/ (3 files)
+- examples/ (5 files)
+
+**Token Budget:** 12,450 / 50,000 (24% used)
+```
+
+---
+
+## STEP 5: Analyze & Plan (with Model Routing)
+
+**Goal:** Create execution plan with model routing assignments
+
+### 5.1 Task Analysis
+
+**Detect task characteristics:**
+```
+- Complexity: [low/medium/high]
+- Category: [detected from context]
+- Technologies: [rust, websockets, async, docker]
+- Novelty: [routine/moderate/novel]
+- Risk: [low/medium/high]
+```
+
+### 5.2 Create Execution Plan
+
+**Generate task breakdown:**
+```markdown
+## Execution Plan
+
+### Phase 1: Architecture (High Complexity → opus)
+- Design WebSocket connection pool architecture
+- Define error recovery strategy
+- Plan graceful shutdown mechanism
+
+### Phase 2: Implementation (Medium Complexity → sonnet)
+- Implement connection pool struct
+- Add WebSocket handler with bounded channels
+- Implement health check endpoint
+- Write error handling for disconnections
+
+### Phase 3: Testing (Standard Complexity → sonnet)
+- Write unit tests for connection pool
+- Write integration tests for WebSocket flow
+- Add stress test for 10K connections
+
+### Phase 4: Refinement (Low Complexity → haiku)
+- Add debug logging
+- Format code with rustfmt
+- Update configuration examples
+```
+
+### 5.3 Model Routing Assignments
+
+**Decision Matrix:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  TASK                             │  MODEL   │  COST  │ WHY │
+├───────────────────────────────────┼──────────┼────────┼─────┤
+│  Architecture design              │  opus    │  $$$$  │ Critical│
+│  Error recovery strategy          │  opus    │  $$$$  │ Complex │
+│  Connection pool implementation   │  sonnet  │  $$    │ Standard│
+│  WebSocket handler                │  sonnet  │  $$    │ Standard│
+│  Unit tests                       │  sonnet  │  $$    │ Coverage│
+│  Integration tests                │  sonnet  │  $$    │ Complex │
+│  Stress tests                     │  sonnet  │  $$    │ Non-trivial│
+│  Debug logging                    │  haiku   │  $     │ Trivial │
+│  Code formatting                  │  haiku   │  $     │ Automated│
+│  Config examples                  │  haiku   │  $     │ Boilerplate│
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 5.4 Cost Estimation
+
+```markdown
+## Model Routing Summary
+| Model  | Tasks | Estimated Tokens | Est. Cost |
+|--------|-------|------------------|-----------|
+| opus   | 2     | ~50K out + 10K in | $0.30    |
+| sonnet | 5     | ~100K out + 25K in| $0.15    |
+| haiku  | 3     | ~15K out + 5K in  | $0.003   |
+| **Total** | **10** |              | **$0.45** |
+```
+
+---
+
+## STEP 6: Write Plan to Blackboard
+
+**Goal:** Share plan with all agents via Redis Blackboard
+
+### 6.1 Initialize Blackboard for Pipeline
+
+```bash
+# Generate unique pipeline ID
+PIPELINE_ID="rvgb-$(date +%s)-$(uuidgen | cut -d'-' -f1)"
+
+# Initialize status tracking
+redis-cli -u $REDIS_URL HSET status:$PIPELINE_ID \
+    phase "planning" \
+    progress "0" \
+    active_agents "" \
+    errors "0" \
+    started_at "$(date -Iseconds)"
+```
+
+### 6.2 Write Plan Artifact
+
+```python
+# Store plan as artifact on Blackboard
+plan_artifact = {
+    "artifact_id": "plan_v1",
+    "artifact_type": "PLAN",
+    "content": {
+        "phases": [
+            {
+                "phase_name": "Architecture",
+                "tasks": [
+                    {
+                        "task_id": "task-1",
+                        "description": "Design WebSocket connection pool",
+                        "assigned_agent": "@rust-architect",
+                        "model": "opus",
+                        "status": "pending"
+                    }
+                ]
+            },
+            # ... more phases
+        ]
+    },
+    "created_by": "orchestrator",
+    "created_at": "2025-11-29T10:30:00Z",
+    "version": 1,
+    "dependencies": []
+}
+
+# Write to Redis
+redis-cli -u $REDIS_URL HSET artifacts:$PIPELINE_ID:plan_v1 \
+    data "$(echo $plan_artifact | jq -c .)"
+```
+
+### 6.3 Blackboard Operations
+
+**Write Artifact:**
+```bash
+blackboard.write_artifact(
+    pipeline_id="rvgb-1732880400-a1b2c3",
+    artifact_id="plan_v1",
+    artifact_type="PLAN",
+    content=plan_data,
+    created_by="orchestrator"
+)
+```
+
+**Read Artifact:**
+```bash
+blackboard.read_artifact(
+    pipeline_id="rvgb-1732880400-a1b2c3",
+    artifact_id="plan_v1"
+)
+```
+
+**Acquire Lock (before editing file):**
+```bash
+blackboard.acquire_lock(
+    pipeline_id="rvgb-1732880400-a1b2c3",
+    resource="src/engine.rs",
+    agent_name="@rust-pro",
+    ttl=300  # 5 minutes auto-release
+)
+```
+
+**Release Lock (after editing):**
+```bash
+blackboard.release_lock(
+    pipeline_id="rvgb-1732880400-a1b2c3",
+    resource="src/engine.rs",
+    agent_name="@rust-pro"
+)
+```
+
+### 6.4 Agent Access Pattern
+
+**All agents read plan from Blackboard:**
+```
+1. Agent spawns → reads plan from Blackboard
+2. Agent finds assigned tasks
+3. Agent acquires lock on files to modify
+4. Agent writes code artifacts to Blackboard
+5. Agent releases locks
+6. Agent updates task status on Blackboard
+```
+
+---
+
+## STEP 7: Create Shadow Workspace (Docker)
+
+**Goal:** Isolated environment for safe verification without affecting main workspace
+
+### 7.1 Launch Shadow Container
+
+```bash
+# Create shadow workspace container
+SHADOW_ID=$(docker run -d \
+    --name "shadow-$PIPELINE_ID" \
+    -v "$PWD:/workspace:ro" \
+    -w /workspace \
+    rvgb-shadow-workspace:latest \
+    tail -f /dev/null)
+
+echo "Shadow workspace created: $SHADOW_ID"
+```
+
+### 7.2 Copy Project to Shadow
+
+```bash
+# Clone project into shadow (isolated copy)
+docker exec $SHADOW_ID bash -c "
+    git clone /workspace /shadow-workspace
+    cd /shadow-workspace
+    git config user.name 'RVGB Shadow'
+    git config user.email 'shadow@rvgb.local'
+"
+```
+
+### 7.3 Shadow Workspace Interface
+
+**Python-style API (conceptual):**
+```python
+with ShadowWorkspace(project_path) as shadow:
+    # Apply changes from Blackboard
+    shadow.apply_patch(agent_diff)
+
+    # Run verification gauntlet
+    results = shadow.verify_all()
+
+    if all(r.passed for r in results):
+        # Verification passed → commit to main
+        shadow.commit_to_main()
+    else:
+        # Verification failed → rollback
+        shadow.rollback()
+        # Feed errors back to agent for retry
+```
+
+### 7.4 Shadow Benefits
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ✅ Complete isolation from main workspace                  │
+│  ✅ Safe to run destructive tests                           │
+│  ✅ Parallel verification without conflicts                 │
+│  ✅ Easy rollback (just delete container)                   │
+│  ✅ Reproducible environment (Dockerized)                   │
+│  ✅ Can snapshot shadow state at any point                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**SKIP Shadow if:**
+- Docker not available (fallback to git worktree)
+- User says "direct mode"
+- Read-only task (no code changes)
+
+---
+
+## STEP 8: Delegate to Agents (read/write Blackboard)
+
+**Goal:** Agents execute tasks, coordinate via Blackboard
+
+### 8.1 Agent Spawning with Context
+
+**Agent receives:**
+1. Plan from Blackboard (assigned tasks)
+2. Past reflections (STEP 3)
+3. Repository map (STEP 4)
+4. Blackboard credentials (PIPELINE_ID, REDIS_URL)
+5. Shadow workspace path
+
+**Task Call Template:**
+```xml
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">opus</parameter>
+  <parameter name="prompt">You are @rust-architect, expert in Rust system design.
+
+TASK: Design WebSocket connection pool architecture for high-throughput order matching.
+
+CONTEXT:
+- Pipeline ID: rvgb-1732880400-a1b2c3
+- Redis Blackboard: $REDIS_URL
+- Shadow Workspace: /shadow-workspace (in Docker container: shadow-rvgb-1732880400-a1b2c3)
+
+PLAN (from Blackboard):
+[Read plan from Blackboard: redis-cli HGET artifacts:$PIPELINE_ID:plan_v1 data]
+
+PAST LEARNINGS (Reflexion):
+[Injected reflections from STEP 3]
+
+REPOSITORY MAP:
+[Compressed repo map from STEP 4]
+
+REQUIREMENTS:
+- Design bounded channel architecture (reflection: avoid unbounded channels)
+- Plan graceful shutdown for 10K+ connections
+- Error recovery strategy for network partitions
+
+COORDINATION:
+1. Read plan: redis-cli HGET artifacts:$PIPELINE_ID:plan_v1 data
+2. Write your design: blackboard.write_artifact("architecture_design", content, PLAN)
+3. Update status: redis-cli HSET status:$PIPELINE_ID phase "architecture_complete"
+
+OUTPUT:
+Provide architecture design document. Store on Blackboard.
+  </parameter>
+</invoke>
+```
+
+### 8.2 Parallel Agent Execution
+
+**Independent tasks → Parallel calls:**
+```xml
+<!-- Architecture + Tests can run in parallel -->
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">opus</parameter>
+  <parameter name="prompt">@rust-architect: [architecture task]
+  PIPELINE_ID: $PIPELINE_ID
+  BLACKBOARD: $REDIS_URL</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">@test-writer: [test generation task]
+  PIPELINE_ID: $PIPELINE_ID
+  BLACKBOARD: $REDIS_URL</parameter>
+</invoke>
+```
+
+### 8.3 Blackboard Coordination Example
+
+**Agent 1 (Architect) writes:**
+```bash
+# Agent writes architecture design to Blackboard
+redis-cli -u $REDIS_URL HSET artifacts:$PIPELINE_ID:architecture_v1 \
+    data '{
+        "artifact_type": "PLAN",
+        "content": "Use bounded mpsc channels with capacity 1000...",
+        "created_by": "@rust-architect"
+    }'
+
+# Update status
+redis-cli -u $REDIS_URL HSET status:$PIPELINE_ID \
+    phase "architecture_complete" \
+    progress "25"
+```
+
+**Agent 2 (Implementer) reads:**
+```bash
+# Agent reads architecture design from Blackboard
+ARCHITECTURE=$(redis-cli -u $REDIS_URL HGET artifacts:$PIPELINE_ID:architecture_v1 data)
+
+# Acquire lock before editing src/engine.rs
+redis-cli -u $REDIS_URL SET locks:$PIPELINE_ID:src/engine.rs "@rust-pro" EX 300
+
+# Implement based on architecture
+# ...
+
+# Write code artifact to Blackboard
+redis-cli -u $REDIS_URL HSET artifacts:$PIPELINE_ID:code:src/engine.rs \
+    data '{
+        "artifact_type": "CODE",
+        "content": "pub struct ConnectionPool { ... }",
+        "created_by": "@rust-pro"
+    }'
+
+# Release lock
+redis-cli -u $REDIS_URL DEL locks:$PIPELINE_ID:src/engine.rs
+```
+
+### 8.4 Agent Activity Logging
+
+**All Blackboard operations logged:**
+```bash
+# Agent logs activity
+redis-cli -u $REDIS_URL RPUSH agents:$PIPELINE_ID:@rust-pro \
+    "$(date -Iseconds)|WRITE|artifacts:architecture_v1|success"
+
+redis-cli -u $REDIS_URL RPUSH agents:$PIPELINE_ID:@rust-pro \
+    "$(date -Iseconds)|LOCK|src/engine.rs|acquired"
+
+redis-cli -u $REDIS_URL RPUSH agents:$PIPELINE_ID:@rust-pro \
+    "$(date -Iseconds)|UNLOCK|src/engine.rs|released"
+```
+
+---
+
+## STEP 9: Verification Gauntlet (in Shadow)
+
+**Goal:** Comprehensive verification in isolated shadow workspace
+
+### 9.1 Verification Stages
+
+**5-stage gauntlet (all must pass):**
+```
+1. Syntax Check (AST parse)
+2. Linter (ruff/eslint/clippy)
+3. Type Check (mypy/tsc/cargo check)
+4. Security Scan (bandit/CodeQL/cargo-audit)
+5. Unit Tests (pytest/jest/cargo test)
+```
+
+### 9.2 Execute in Shadow Workspace
+
+```bash
+# Apply changes from Blackboard to shadow workspace
+docker exec shadow-$PIPELINE_ID bash -c "
+    cd /shadow-workspace
+
+    # Retrieve code artifacts from Blackboard and apply
+    # For each artifact in artifacts:$PIPELINE_ID:code:*
+    # Apply changes to files
+"
+
+# Run verification gauntlet
+docker exec shadow-$PIPELINE_ID bash -c "
+    cd /shadow-workspace
+    /usr/local/bin/verify
+"
+```
+
+### 9.3 Verification Script (verify.sh in Docker)
+
+```bash
+#!/bin/bash
+# Verification Gauntlet for Shadow Workspace
+
+PROJECT_ROOT="/shadow-workspace"
+cd $PROJECT_ROOT
+
+echo "=== RVGB Verification Gauntlet ==="
+
+# Detect project type
+if [ -f "Cargo.toml" ]; then
+    PROJECT_TYPE="rust"
+elif [ -f "package.json" ]; then
+    PROJECT_TYPE="node"
+elif [ -f "setup.py" ] || [ -f "pyproject.toml" ]; then
+    PROJECT_TYPE="python"
+else
+    PROJECT_TYPE="unknown"
+fi
+
+echo "Detected project type: $PROJECT_TYPE"
+
+# Stage 1: Syntax Check
+echo -e "\n[1/5] Syntax Check..."
+case $PROJECT_TYPE in
+    rust)
+        cargo check --message-format=json 2>&1 | tee /tmp/syntax.log
+        SYNTAX_RESULT=${PIPESTATUS[0]}
+        ;;
+    node)
+        npx tsc --noEmit 2>&1 | tee /tmp/syntax.log
+        SYNTAX_RESULT=${PIPESTATUS[0]}
+        ;;
+    python)
+        python3 -m py_compile **/*.py 2>&1 | tee /tmp/syntax.log
+        SYNTAX_RESULT=$?
+        ;;
+esac
+
+if [ $SYNTAX_RESULT -ne 0 ]; then
+    echo "❌ SYNTAX CHECK FAILED"
+    exit 1
+fi
+echo "✅ Syntax check passed"
+
+# Stage 2: Linter
+echo -e "\n[2/5] Linter Check..."
+case $PROJECT_TYPE in
+    rust)
+        cargo clippy --message-format=json 2>&1 | tee /tmp/lint.log
+        LINT_RESULT=${PIPESTATUS[0]}
+        ;;
+    node)
+        npx eslint . --format json > /tmp/lint.log 2>&1
+        LINT_RESULT=$?
+        ;;
+    python)
+        ruff check . --output-format=json > /tmp/lint.log 2>&1
+        LINT_RESULT=$?
+        ;;
+esac
+
+if [ $LINT_RESULT -ne 0 ]; then
+    echo "⚠️  LINTER WARNINGS (non-blocking)"
+fi
+echo "✅ Linter check complete"
+
+# Stage 3: Type Check
+echo -e "\n[3/5] Type Check..."
+case $PROJECT_TYPE in
+    rust)
+        # Covered by cargo check
+        echo "✅ Type check covered by syntax check"
+        ;;
+    node)
+        npx tsc --noEmit 2>&1 | tee /tmp/typecheck.log
+        TYPE_RESULT=${PIPESTATUS[0]}
+        ;;
+    python)
+        mypy . --json > /tmp/typecheck.log 2>&1
+        TYPE_RESULT=$?
+        ;;
+esac
+
+if [ ${TYPE_RESULT:-0} -ne 0 ]; then
+    echo "❌ TYPE CHECK FAILED"
+    exit 3
+fi
+echo "✅ Type check passed"
+
+# Stage 4: Security Scan
+echo -e "\n[4/5] Security Scan..."
+case $PROJECT_TYPE in
+    rust)
+        cargo audit --json > /tmp/security.log 2>&1
+        SEC_RESULT=$?
+        ;;
+    node)
+        npm audit --json > /tmp/security.log 2>&1
+        SEC_RESULT=$?
+        ;;
+    python)
+        bandit -r . -f json -o /tmp/security.log 2>&1
+        SEC_RESULT=$?
+        ;;
+esac
+
+if [ $SEC_RESULT -ne 0 ]; then
+    echo "⚠️  SECURITY WARNINGS (review required)"
+fi
+echo "✅ Security scan complete"
+
+# Stage 5: Unit Tests
+echo -e "\n[5/5] Unit Tests..."
+case $PROJECT_TYPE in
+    rust)
+        cargo test --message-format=json 2>&1 | tee /tmp/tests.log
+        TEST_RESULT=${PIPESTATUS[0]}
+        ;;
+    node)
+        npm test -- --json --outputFile=/tmp/tests.log 2>&1
+        TEST_RESULT=$?
+        ;;
+    python)
+        pytest --json-report --json-report-file=/tmp/tests.log 2>&1
+        TEST_RESULT=$?
+        ;;
+esac
+
+if [ $TEST_RESULT -ne 0 ]; then
+    echo "❌ TESTS FAILED"
+    exit 5
+fi
+echo "✅ All tests passed"
+
+echo -e "\n=== ✅ VERIFICATION GAUNTLET PASSED ==="
+exit 0
+```
+
+### 9.4 Parse Verification Results
+
+```bash
+# Extract results from shadow container
+docker cp shadow-$PIPELINE_ID:/tmp/syntax.log /tmp/shadow-results/
+docker cp shadow-$PIPELINE_ID:/tmp/lint.log /tmp/shadow-results/
+docker cp shadow-$PIPELINE_ID:/tmp/typecheck.log /tmp/shadow-results/
+docker cp shadow-$PIPELINE_ID:/tmp/security.log /tmp/shadow-results/
+docker cp shadow-$PIPELINE_ID:/tmp/tests.log /tmp/shadow-results/
+
+# Check exit code
+VERIFICATION_EXIT_CODE=$?
+```
+
+### 9.5 Verification Report
+
+```markdown
+## Verification Gauntlet Results
+
+| Stage | Status | Details |
+|-------|--------|---------|
+| 1. Syntax Check | ✅ PASS | No syntax errors |
+| 2. Linter | ⚠️ WARN | 3 warnings (non-blocking) |
+| 3. Type Check | ✅ PASS | All types valid |
+| 4. Security Scan | ✅ PASS | No vulnerabilities |
+| 5. Unit Tests | ✅ PASS | 47/47 tests passed |
+
+**Overall:** ✅ PASSED (all critical stages passed)
+
+**Warnings (non-blocking):**
+- Linter: Unused import in src/utils.rs:15
+- Linter: Consider using if-let instead of match in src/engine.rs:230
+- Linter: Function complexity high in src/engine.rs:process_order
+
+**Exit Code:** 0
+```
+
+**If verification fails:**
+```markdown
+## Verification Gauntlet Results
+
+| Stage | Status | Details |
+|-------|--------|---------|
+| 1. Syntax Check | ✅ PASS | No syntax errors |
+| 2. Linter | ✅ PASS | No issues |
+| 3. Type Check | ❌ FAIL | Type mismatch in src/engine.rs:145 |
+| 4. Security Scan | ⏭️ SKIP | Skipped due to type check failure |
+| 5. Unit Tests | ⏭️ SKIP | Skipped due to type check failure |
+
+**Overall:** ❌ FAILED (type check failed)
+
+**Errors:**
+```
+error[E0308]: mismatched types
+  --> src/engine.rs:145:20
+   |
+145 |         let result = process_async(order).await;
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<Fill>`, found `Fill`
+```
+
+**Next Step:** Feed error to agent for retry (TDD Loop - STEP 10)
+```
+
+---
+
+## STEP 10: TDD Loop (3-strike max)
+
+**Goal:** Iterative fix loop with maximum 3 attempts
+
+### 10.1 Strike System
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  STRIKE 1: Initial Verification                             │
+│  ├─ Run verification gauntlet (STEP 9)                      │
+│  ├─ If PASS → Continue to STEP 11                           │
+│  └─ If FAIL → Extract errors, proceed to Strike 2           │
+│                                                             │
+│  STRIKE 2: Agent Fix Attempt                                │
+│  ├─ Feed errors to original agent                           │
+│  ├─ Agent fixes in shadow workspace (via Blackboard)        │
+│  ├─ Re-run verification gauntlet                            │
+│  ├─ If PASS → Continue to STEP 11                           │
+│  └─ If FAIL → Proceed to Strike 3                           │
+│                                                             │
+│  STRIKE 3: Expert Escalation                                │
+│  ├─ Spawn @code-reviewer to analyze root cause              │
+│  ├─ Reviewer provides fix recommendations                   │
+│  ├─ Original agent applies fix                              │
+│  ├─ Re-run verification gauntlet                            │
+│  ├─ If PASS → Continue to STEP 11                           │
+│  └─ If FAIL → HALT, rollback shadow, report to user         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 10.2 Strike 2: Agent Fix
+
+**Extract error context:**
+```bash
+# Parse verification logs for specific errors
+SYNTAX_ERRORS=$(jq -r '.errors[]' /tmp/shadow-results/syntax.log)
+TYPE_ERRORS=$(jq -r '.errors[]' /tmp/shadow-results/typecheck.log)
+TEST_FAILURES=$(jq -r '.failures[]' /tmp/shadow-results/tests.log)
+```
+
+**Feed errors to agent:**
+```xml
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">You are @rust-pro. Fix the failing verification in shadow workspace.
+
+PIPELINE_ID: $PIPELINE_ID
+BLACKBOARD: $REDIS_URL
+SHADOW WORKSPACE: shadow-$PIPELINE_ID (Docker container)
+
+VERIFICATION FAILURES:
+```
+[Type Check Errors]
+error[E0308]: mismatched types
+  --> src/engine.rs:145:20
+   |
+145 |         let result = process_async(order).await;
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^ expected `Result<Fill>`, found `Fill`
+```
+
+EXPECTED: process_async should return Result<Fill>
+ACTUAL: process_async returns Fill directly
+
+ROOT CAUSE: Missing error handling wrapper
+
+FIX REQUIRED:
+1. Read current code from Blackboard: artifacts:$PIPELINE_ID:code:src/engine.rs
+2. Wrap process_async call with Ok() or add ? operator
+3. Update code artifact on Blackboard
+4. Orchestrator will re-run verification
+
+Fix this specific error. Do not refactor unrelated code.
+  </parameter>
+</invoke>
+```
+
+### 10.3 Strike 3: Expert Escalation
+
+**If Strike 2 fails, get expert analysis:**
+```xml
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">opus</parameter>
+  <parameter name="prompt">You are @code-reviewer, expert debugging specialist.
+
+CONTEXT: Agent has failed to fix verification error after 2 attempts.
+
+ORIGINAL ERROR (Strike 1):
+```
+error[E0308]: mismatched types in src/engine.rs:145
+```
+
+ATTEMPTED FIX (Strike 2):
+[What agent tried]
+
+PERSISTING ERROR (Strike 2 verification):
+```
+error[E0308]: still mismatched types in src/engine.rs:145
+[possibly different details]
+```
+
+CODE CONTEXT:
+[Read from Blackboard: artifacts:$PIPELINE_ID:code:src/engine.rs]
+
+ANALYSIS REQUIRED:
+1. Why did the first fix fail?
+2. What is the actual root cause (not symptoms)?
+3. What is the correct fix?
+
+Provide detailed root cause analysis and specific fix instructions.
+  </parameter>
+</invoke>
+```
+
+**Apply expert fix:**
+```xml
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">You are @rust-pro. Apply the expert reviewer's fix.
+
+EXPERT ANALYSIS:
+[Reviewer's root cause analysis]
+
+RECOMMENDED FIX:
+[Specific instructions from reviewer]
+
+TASK:
+1. Read code from Blackboard
+2. Apply the exact fix recommended
+3. Update Blackboard artifact
+4. Do NOT make additional changes
+
+This is Strike 3 (final attempt). Must succeed.
+  </parameter>
+</invoke>
+```
+
+### 10.4 TDD Loop Exhausted
+
+**If Strike 3 fails:**
+```markdown
+## ⚠️ TDD LOOP EXHAUSTED (3/3 strikes)
+
+**Strike 1 (Initial):**
+- Error: Type mismatch in src/engine.rs:145
+- Details: Expected `Result<Fill>`, found `Fill`
+
+**Strike 2 (Agent Fix):**
+- Attempted: Wrapped with Ok()
+- Result: Still failed - different type error
+- New error: Expected `Result<Fill, Error>`, found `Result<Fill, ()>`
+
+**Strike 3 (Expert Escalation):**
+- Expert analysis: Missing error type in function signature
+- Attempted: Changed return type to Result<Fill, Error>
+- Result: Still failed - Error type not in scope
+- Final error: Cannot find type `Error` in this scope
+
+**RECOMMENDATION:**
+This appears to be a deeper architectural issue requiring manual intervention:
+1. Error type needs to be defined/imported
+2. May need to refactor error handling strategy
+3. Consider using thiserror or anyhow crate
+
+**SHADOW WORKSPACE STATUS:**
+- Container: shadow-$PIPELINE_ID (kept for debugging)
+- Branch: rollback-$PIPELINE_ID (preserved)
+- Main workspace: UNCHANGED (protected)
+
+**NEXT STEPS:**
+- Manual debugging recommended
+- Review error handling architecture
+- Consider adding thiserror dependency
+```
+
+**Store failure in procedural_memory for learning:**
+```sql
+INSERT INTO procedural_memory (reflection_text, failure_context, relevance_tags)
+VALUES (
+    'When encountering persistent type errors in Rust async code, check that error types are properly defined and in scope. Using error handling crates like thiserror or anyhow can prevent this.',
+    '{"what_failed": "Type error in async function after 3 fix attempts",
+      "root_cause": "Error type not defined/imported in scope",
+      "fix_applied": "Would require defining custom Error type or using error crate",
+      "lesson": "Define error types early in Rust projects"}',
+    ARRAY['rust', 'async', 'error-handling', 'types']
+);
+```
+
+---
+
+## STEP 11: Multi-Perspective Review
+
+**Goal:** Multiple specialists review the working code in parallel
+
+**Only if verification passed in STEP 9 or 10.**
+
+### 11.1 Parallel Review Agents
+
+**Spawn 5 reviewers simultaneously:**
+```xml
+<!-- Security Review -->
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">You are @security-auditor, expert in security vulnerabilities.
+
+TASK: Review code for security issues.
+
+CODE LOCATION:
+- Read from Blackboard: artifacts:$PIPELINE_ID:code:*
+- Or inspect shadow workspace: shadow-$PIPELINE_ID:/shadow-workspace
+
+FOCUS AREAS:
+- Input validation
+- SQL injection / command injection
+- Authentication/authorization
+- Sensitive data exposure
+- Cryptographic issues
+- Dependencies with known CVEs
+
+OUTPUT:
+Rate each area: 🔴 Critical / 🟡 Warning / 🟢 Good
+Provide specific findings with line numbers.
+  </parameter>
+</invoke>
+
+<!-- Architecture Review -->
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">You are @architecture-reviewer, expert in system design.
+
+TASK: Review code for architectural quality.
+
+FOCUS AREAS:
+- Modularity and separation of concerns
+- Coupling and cohesion
+- Scalability considerations
+- Error handling strategy
+- Async/concurrency patterns
+
+OUTPUT:
+Rate: 🔴 Poor / 🟡 Acceptable / 🟢 Excellent
+Suggest improvements.
+  </parameter>
+</invoke>
+
+<!-- Performance Review -->
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">You are @performance-reviewer, expert in optimization.
+
+TASK: Review code for performance bottlenecks.
+
+FOCUS AREAS:
+- Algorithmic complexity
+- Memory allocations
+- Unnecessary cloning/copying
+- Lock contention
+- Database query efficiency
+
+OUTPUT:
+Rate: 🔴 Bottleneck / 🟡 Suboptimal / 🟢 Optimized
+Identify hot paths.
+  </parameter>
+</invoke>
+
+<!-- Simplicity Review -->
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">haiku</parameter>
+  <parameter name="prompt">You are @simplicity-reviewer, expert in clean code.
+
+TASK: Review code for over-engineering and complexity.
+
+FOCUS AREAS:
+- YAGNI violations (over-engineering)
+- Code readability
+- Naming clarity
+- Documentation adequacy
+- Dead code or unnecessary abstractions
+
+OUTPUT:
+Rate: 🔴 Over-engineered / 🟡 Complex / 🟢 Simple
+Suggest simplifications.
+  </parameter>
+</invoke>
+
+<!-- Code Quality Review -->
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">You are @code-reviewer, expert in code quality.
+
+TASK: General code review for quality and best practices.
+
+FOCUS AREAS:
+- Idiomatic code for the language
+- Error handling completeness
+- Test coverage adequacy
+- Edge case handling
+- Code duplication
+
+OUTPUT:
+Rate: 🔴 Needs work / 🟡 Acceptable / 🟢 High quality
+List specific improvements.
+  </parameter>
+</invoke>
+```
+
+### 11.2 Aggregate Review Results
+
+**Collect reviews from Blackboard:**
+```bash
+# Reviewers write to Blackboard
+# artifacts:$PIPELINE_ID:review:security
+# artifacts:$PIPELINE_ID:review:architecture
+# artifacts:$PIPELINE_ID:review:performance
+# artifacts:$PIPELINE_ID:review:simplicity
+# artifacts:$PIPELINE_ID:review:quality
+
+# Read all reviews
+for review_type in security architecture performance simplicity quality; do
+    redis-cli -u $REDIS_URL HGET artifacts:$PIPELINE_ID:review:$review_type data
+done
+```
+
+### 11.3 Review Summary
+
+```markdown
+## Multi-Perspective Review Summary
+
+| Reviewer | Rating | Critical Issues | Warnings | Notes |
+|----------|--------|-----------------|----------|-------|
+| Security | 🟢 Good | 0 | 1 | Consider rate limiting on WebSocket endpoint |
+| Architecture | 🟢 Excellent | 0 | 0 | Clean separation, good error handling |
+| Performance | 🟡 Acceptable | 0 | 2 | Clone in hot path (line 145), consider Arc |
+| Simplicity | 🟢 Simple | 0 | 1 | Could extract helper function for validation |
+| Code Quality | 🟢 High Quality | 0 | 0 | Idiomatic Rust, good test coverage |
+
+**Overall Assessment:** ✅ APPROVED (no critical issues)
+
+**Detailed Findings:**
+
+### Security (🟢 Good)
+- ✅ Input validation present
+- ✅ No SQL injection risks (using ORM)
+- ✅ Authentication enforced
+- ⚠️  **Warning:** WebSocket endpoint lacks rate limiting (non-blocking)
+  - Location: src/websocket.rs:89
+  - Recommendation: Add per-client message rate limit
+
+### Architecture (🟢 Excellent)
+- ✅ Clean separation of concerns
+- ✅ Error handling via Result types
+- ✅ Bounded channels prevent memory leaks
+- ✅ Graceful shutdown implemented
+
+### Performance (🟡 Acceptable)
+- ⚠️  **Warning:** Unnecessary clone in hot path
+  - Location: src/engine.rs:145
+  - Issue: `order.clone()` on every iteration
+  - Recommendation: Use Arc<Order> or borrow
+- ⚠️  **Warning:** Lock held across await point
+  - Location: src/engine.rs:230
+  - Recommendation: Minimize lock scope
+
+### Simplicity (🟢 Simple)
+- ✅ Readable, idiomatic code
+- ✅ No over-engineering
+- ⚠️  **Suggestion:** Extract validation logic to helper
+  - Location: src/websocket.rs:120-140 (20 lines of validation)
+  - Recommendation: Create `validate_order()` function
+
+### Code Quality (🟢 High Quality)
+- ✅ Follows Rust best practices
+- ✅ Comprehensive error handling
+- ✅ Good test coverage (47 tests)
+- ✅ No code duplication
+```
+
+### 11.4 Critical Issues → Block Merge
+
+**If any reviewer finds 🔴 Critical issues:**
+```markdown
+## ⚠️ REVIEW BLOCKED - CRITICAL ISSUES FOUND
+
+**Security Review: 🔴 Critical**
+- **CRITICAL:** SQL Injection vulnerability in query builder
+  - Location: src/db.rs:56
+  - Issue: User input concatenated directly into SQL query
+  - Fix Required: Use parameterized queries
+  - **BLOCKING:** Cannot merge until fixed
+
+**Next Steps:**
+1. Spawn agent to fix critical security issue
+2. Re-run verification gauntlet
+3. Re-run security review
+4. Proceed only if all critical issues resolved
+```
+
+---
+
+## STEP 12: Reflexion - Generate & Store
+
+**Goal:** Generate reflection on the process and store learnings
+
+### 12.1 Self-Critique Checklist
+
+**Evaluate the completed work:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  REFLEXION SELF-CRITIQUE                                    │
+│  ├─ Does solution actually solve the stated problem? ✅/❌  │
+│  ├─ Are there obvious bugs or edge cases missed? ✅/❌      │
+│  ├─ Is it over-engineered for the task? ✅/❌               │
+│  ├─ Did reviewers flag critical issues? ✅/❌               │
+│  ├─ Would I be confident deploying this? ✅/❌              │
+│  └─ What could have been done better? [free text]          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 12.2 Generate Reflection (if issues found)
+
+**If any failures occurred during pipeline:**
+```xml
+<invoke name="Task">
+  <parameter name="subagent_type">general-purpose</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">You are @reflection-generator, expert in learning from experience.
+
+TASK: Generate reflection on the orchestration process.
+
+PIPELINE CONTEXT:
+- Task: Implement WebSocket connection pool
+- Outcome: Success (after 2 TDD strikes)
+- Failures encountered: Type error in Strike 1, Error type scope in Strike 2
+
+FAILURE DETAILS:
+**Strike 1:** Type mismatch - expected Result<Fill>, found Fill
+- Root cause: Missing error handling wrapper
+- Fix: Added ? operator
+
+**Strike 2:** Error type not in scope
+- Root cause: Custom Error type not imported
+- Fix: Added `use crate::errors::Error;`
+
+GENERATE REFLECTION:
+1. What was the core issue?
+2. Why did it happen?
+3. How was it resolved?
+4. What lesson should be learned?
+5. What tags are relevant? (for future retrieval)
+
+OUTPUT FORMAT:
+```json
+{
+  "reflection_text": "One-sentence key learning",
+  "failure_context": {
+    "what_failed": "...",
+    "root_cause": "...",
+    "fix_applied": "...",
+    "lesson": "..."
+  },
+  "relevance_tags": ["tag1", "tag2", ...]
+}
+```
+  </parameter>
+</invoke>
+```
+
+### 12.3 Store Reflection in Procedural Memory
+
+**Insert reflection into PostgreSQL:**
+```sql
+INSERT INTO procedural_memory (
+    reflection_text,
+    failure_context,
+    relevance_tags,
+    created_at
+)
+VALUES (
+    'When implementing async Rust functions that can error, always define and import error types before using Result<T, E>',
+    '{
+        "what_failed": "Type errors in async function after initial implementation",
+        "root_cause": "Error type not defined/imported in function signature scope",
+        "fix_applied": "Added custom Error type definition and imported in module",
+        "lesson": "Define error types early in module hierarchy, before implementing functions that use them"
+    }'::jsonb,
+    ARRAY['rust', 'async', 'error-handling', 'types', 'result'],
+    NOW()
+);
+```
+
+**Using MCP (if available):**
+```
+mcp__memory__store_reflection(
+    reflection="When implementing async Rust functions that can error, always define and import error types before using Result<T, E>",
+    failure_context={
+        "what_failed": "Type errors in async function",
+        "root_cause": "Error type not in scope",
+        "fix_applied": "Defined and imported Error type",
+        "lesson": "Define error types early"
+    },
+    tags=["rust", "async", "error-handling", "types"]
+)
+```
+
+### 12.4 Link Reflection to Knowledge Graph
+
+**Update knowledge graph with reflection:**
+```sql
+-- Create entity for the reflection
+INSERT INTO entities (entity_type, entity_name, metadata)
+VALUES (
+    'reflection',
+    'rust-async-error-types',
+    '{"topic": "error handling", "language": "rust"}'::jsonb
+)
+ON CONFLICT (entity_type, entity_name) DO UPDATE
+SET last_modified = NOW();
+
+-- Link reflection to related entities
+-- (e.g., link to src/engine.rs file entity)
+INSERT INTO relations (source_entity_id, relation_type, target_entity_id)
+SELECT
+    (SELECT id FROM entities WHERE entity_type='reflection' AND entity_name='rust-async-error-types'),
+    'applies_to',
+    (SELECT id FROM entities WHERE entity_type='file' AND entity_name='src/engine.rs')
+ON CONFLICT DO NOTHING;
+```
+
+### 12.5 Reflexion Summary
+
+```markdown
+## Reflexion Generated
+
+**Reflection:** When implementing async Rust functions that can error, always define and import error types before using Result<T, E>
+
+**Context:**
+- What failed: Type errors in async function implementation
+- Root cause: Error type not defined/imported in scope
+- Fix applied: Defined custom Error type and imported in module
+- Lesson: Define error types early in module hierarchy
+
+**Stored:**
+- ✅ Procedural memory (PostgreSQL)
+- ✅ Knowledge graph link (reflection → src/engine.rs)
+- ✅ Tags: rust, async, error-handling, types, result
+
+**Future Impact:**
+Next time a similar task is detected (async Rust + error handling), this reflection will be retrieved and injected into agent context (STEP 3).
+```
+
+**If no significant issues:**
+```markdown
+## Reflexion Summary
+
+No significant failures encountered during pipeline.
+Routine success - no new reflection generated.
+
+**Process Quality:**
+- ✅ First-time verification pass
+- ✅ All reviews green
+- ✅ No critical issues
+```
+
+---
+
+## STEP 13: Commit Shadow or Rollback
+
+**Goal:** Finalize changes by committing shadow workspace to main, or rollback on failure
+
+### 13.1 Decision Logic
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  COMMIT CONDITIONS (all must be true):                      │
+│  ├─ ✅ Verification gauntlet passed                         │
+│  ├─ ✅ TDD loop succeeded (within 3 strikes)                │
+│  ├─ ✅ No 🔴 critical review findings                       │
+│  └─ ✅ Reflexion check passed                               │
+│                                                             │
+│  IF all true → COMMIT shadow to main                        │
+│  IF any false → ROLLBACK (discard shadow)                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 13.2 Commit Shadow to Main
+
+**Extract changes from shadow container:**
+```bash
+# Get diff from shadow workspace
+docker exec shadow-$PIPELINE_ID bash -c "
+    cd /shadow-workspace
+    git diff HEAD
+" > /tmp/shadow-changes.patch
+
+# Apply diff to main workspace
+cd $PROJECT_ROOT
+git apply /tmp/shadow-changes.patch
+
+# Verify changes applied correctly
+git status
+git diff
+
+# Commit changes
+git add -A
+git commit -m "$(cat <<'EOF'
+Implement WebSocket connection pool with bounded channels
+
+- Added ConnectionPool struct with configurable capacity
+- Implemented graceful shutdown for 10K+ connections
+- Added error recovery for network partitions
+- Comprehensive test coverage (47 tests)
+
+Verification:
+- ✅ All tests passing
+- ✅ Security review: No critical issues
+- ✅ Performance review: Acceptable (2 minor optimizations suggested)
+
+RVGB Pipeline: $PIPELINE_ID
+
+🤖 Generated with RVGB v3.0
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+```
+
+### 13.3 Cleanup Shadow Container
+
+```bash
+# Stop and remove shadow container
+docker stop shadow-$PIPELINE_ID
+docker rm shadow-$PIPELINE_ID
+
+# Clean up shadow files
+rm -rf /tmp/shadow-results/
+rm -f /tmp/shadow-changes.patch
+
+echo "✅ Shadow workspace committed and cleaned up"
+```
+
+### 13.4 Rollback Shadow
+
+**If any critical failures:**
+```bash
+# Discard shadow container (all changes lost)
+docker stop shadow-$PIPELINE_ID
+docker rm -f shadow-$PIPELINE_ID
+
+# Clean up
+rm -rf /tmp/shadow-results/
+
+echo "⚠️  Shadow workspace rolled back. Main workspace unchanged."
+```
+
+### 13.5 Commit/Rollback Report
+
+**Success (Commit):**
+```markdown
+## Shadow Workspace Status: ✅ COMMITTED
+
+**Changes applied to main workspace:**
+- Modified: src/engine.rs (+120 lines)
+- Modified: src/websocket.rs (+85 lines)
+- Added: src/connection_pool.rs (new file, 200 lines)
+- Modified: tests/engine_test.rs (+30 lines)
+
+**Verification before commit:**
+- ✅ All tests passing (47/47)
+- ✅ No syntax errors
+- ✅ No type errors
+- ✅ Security scan clean
+- ✅ All reviews approved
+
+**Commit hash:** a1b2c3d4
+
+**Shadow container:** Cleaned up
+```
+
+**Failure (Rollback):**
+```markdown
+## Shadow Workspace Status: ⚠️  ROLLED BACK
+
+**Reason:** TDD loop exhausted (3 strikes) - persistent type errors
+
+**Main workspace:** UNCHANGED (protected)
+
+**Shadow preserved for debugging:**
+- Container ID: shadow-$PIPELINE_ID (stopped)
+- To inspect: `docker start shadow-$PIPELINE_ID && docker exec -it shadow-$PIPELINE_ID bash`
+- To discard: `docker rm -f shadow-$PIPELINE_ID`
+
+**Recommendation:**
+Manual intervention required. Review error handling architecture.
+```
+
+---
+
+## STEP 14: Memory Consolidation ("Sleep")
+
+**Goal:** Consolidate episodic memories into semantic knowledge, update knowledge graph
+
+### 14.1 Trigger Consolidation
+
+**Run consolidation process (simulates "sleep cycle"):**
+```sql
+-- Call consolidation function with pipeline ID
+SELECT consolidate_pipeline_memory('$PIPELINE_ID');
+```
+
+**Using MCP (if available):**
+```
+mcp__memory__consolidate_memory(pipeline_run_id='$PIPELINE_ID')
+```
+
+### 14.2 Consolidation Process
+
+**What happens during consolidation:**
+
+**14.2.1 Extract Entities from Episodes**
+```sql
+-- Find all code artifacts created during pipeline
+SELECT
+    event_type,
+    agent_name,
+    context->>'file_path' AS file_path,
+    context->>'function_name' AS function_name
+FROM episodic_memory
+WHERE
+    pipeline_run_id = '$PIPELINE_ID'
+    AND event_type IN ('code_created', 'code_modified');
+
+-- Insert entities into knowledge graph
+INSERT INTO entities (entity_type, entity_name, metadata)
+VALUES
+    ('file', 'src/connection_pool.rs', '{"created_by": "@rust-pro"}'::jsonb),
+    ('function', 'ConnectionPool::new', '{"file": "src/connection_pool.rs"}'::jsonb),
+    ('function', 'ConnectionPool::acquire', '{"file": "src/connection_pool.rs"}'::jsonb)
+ON CONFLICT (entity_type, entity_name) DO UPDATE
+SET last_modified = NOW();
+```
+
+**14.2.2 Extract Relations**
+```sql
+-- Identify relations from code analysis
+-- (e.g., src/websocket.rs uses ConnectionPool)
+INSERT INTO relations (source_entity_id, relation_type, target_entity_id, weight)
+SELECT
+    (SELECT id FROM entities WHERE entity_type='file' AND entity_name='src/websocket.rs'),
+    'uses',
+    (SELECT id FROM entities WHERE entity_type='file' AND entity_name='src/connection_pool.rs'),
+    1.0
+ON CONFLICT (source_entity_id, relation_type, target_entity_id) DO UPDATE
+SET
+    weight = relations.weight + 0.1,
+    last_seen = NOW();
+```
+
+**14.2.3 Update Semantic Patterns**
+```sql
+-- Check if this pipeline used any existing patterns
+-- Update usage stats
+UPDATE semantic_memory
+SET
+    times_used = times_used + 1,
+    last_used = NOW()
+WHERE
+    category = 'rust-async-websockets'
+    AND pattern_name ILIKE '%connection-pool%';
+
+-- If new pattern detected, insert
+INSERT INTO semantic_memory (
+    pattern_name,
+    category,
+    description,
+    key_elements,
+    success_rate,
+    times_used
+)
+VALUES (
+    'bounded-channel-connection-pool',
+    'rust-async-websockets',
+    'Connection pool using bounded channels to prevent memory exhaustion',
+    '{"channels": "bounded", "capacity": 1000, "graceful_shutdown": true}'::jsonb,
+    1.0,
+    1
+)
+ON CONFLICT (pattern_name) DO UPDATE
+SET times_used = semantic_memory.times_used + 1;
+```
+
+**14.2.4 Archive Old Episodes**
+```sql
+-- Archive episodes older than 30 days to cold storage
+-- (Keep in DB but mark as archived, or move to separate table)
+UPDATE episodic_memory
+SET metadata = jsonb_set(
+    COALESCE(metadata, '{}'::jsonb),
+    '{archived}',
+    'true'
+)
+WHERE
+    timestamp < NOW() - INTERVAL '30 days'
+    AND importance < 0.5;
+```
+
+**14.2.5 Prune Low-Utility Patterns**
+```sql
+-- Every 10 pipeline runs, prune patterns with utility_score < 0.3
+-- (Only run if total_orchestrations % 10 == 0)
+
+-- Archive low-utility patterns
+DELETE FROM semantic_memory
+WHERE
+    utility_score < 0.3
+    AND times_used < 2
+    AND last_used < NOW() - INTERVAL '60 days';
+```
+
+### 14.3 Knowledge Graph Update
+
+**Updated graph structure:**
+```
+Entities:
+- file:src/connection_pool.rs (NEW)
+- file:src/websocket.rs (UPDATED)
+- file:src/engine.rs (UPDATED)
+- function:ConnectionPool::new (NEW)
+- function:ConnectionPool::acquire (NEW)
+- reflection:rust-async-error-types (NEW)
+
+Relations:
+- src/websocket.rs --uses--> src/connection_pool.rs (NEW)
+- src/engine.rs --uses--> src/connection_pool.rs (NEW)
+- reflection:rust-async-error-types --applies_to--> src/engine.rs (NEW)
+- ConnectionPool::new --called_by--> src/websocket.rs (NEW)
+```
+
+### 14.4 Consolidation Summary
+
+```markdown
+## Memory Consolidation Complete
+
+**Episodic Memory:**
+- New episodes: 23 (from this pipeline)
+- Total episodes: 1,270
+- Archived episodes: 145 (>30 days old, low importance)
+
+**Semantic Memory:**
+- Patterns updated: 2
+  - rust-async-websockets (times_used: 12 → 13)
+  - error-handling-async (times_used: 15 → 16)
+- New patterns: 1
+  - bounded-channel-connection-pool (utility: 0.7)
+- Patterns pruned: 0 (next prune at 10-run interval)
+
+**Knowledge Graph:**
+- New entities: 5 (3 functions, 1 file, 1 reflection)
+- New relations: 4
+- Updated relations: 2 (weight increased)
+- Total entities: 487
+- Total relations: 1,203
+
+**Procedural Memory (Reflections):**
+- New reflections: 1 (rust async error handling)
+- Total reflections: 34
+
+**Next Consolidation:** After 9 more pipeline runs (every 10 runs: prune low-utility patterns)
+```
+
+---
+
+## STEP 15: Report to User
+
+**Goal:** Comprehensive final report on RVGB orchestration
+
+### 15.1 Full Report Template
+
+```markdown
+# RVGB Orchestration Complete v3.0
+
+## Task
+**Requested:** Implement WebSocket connection pool with bounded channels for high-throughput order matching
+
+**Duration:** 8 minutes 32 seconds
+**Pipeline ID:** rvgb-1732880400-a1b2c3
+
+---
+
+## Infrastructure Status
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| PostgreSQL | ✅ Connected | 5 tables, 1,270 episodes |
+| Redis Blackboard | ✅ Connected | 47 artifacts written |
+| Docker Shadow | ✅ Running | Container: shadow-rvgb-1732880400-a1b2c3 |
+| MCP Memory Server | ⚠️ Not installed | Fallback: Direct PostgreSQL queries |
+
+---
+
+## Memory Retrieval Stats
+
+**Episodic Memory:**
+- Retrieved: 7 episodes (avg relevance score: 0.82)
+- Most relevant: "WebSocket connection pooling fix" (score: 0.94)
+
+**Semantic Memory:**
+- Patterns loaded: 4 (avg utility: 0.81)
+  - rust-async-websockets (utility: 0.91, used: 12→13x)
+  - order-matching-algorithms (utility: 0.87)
+  - error-handling-async (utility: 0.76, used: 15→16x)
+  - docker-compose-setup (utility: 0.68)
+
+**Reflections:**
+- Retrieved: 3 past reflections
+- Applied: "Always bound async channels" (applied 2→3x)
+
+---
+
+## Context Compression
+
+**Repository Map:**
+- Files scanned: 47
+- Files loaded: 12 (compressed to signatures)
+- Files summarized: 8
+- Files skipped: 27 (tests, configs)
+- **Token budget:** 12,450 / 50,000 (24% used)
+
+---
+
+## Blackboard Operations
+
+**Pipeline ID:** rvgb-1732880400-a1b2c3
+
+| Operation | Count |
+|-----------|-------|
+| Artifacts written | 47 |
+| Artifacts read | 89 |
+| Locks acquired | 12 |
+| Locks released | 12 |
+| Status updates | 18 |
+| Agent logs | 156 |
+
+**Top Artifacts:**
+- plan_v1 (PLAN) - read 15x
+- architecture_v1 (PLAN) - read 8x
+- code:src/connection_pool.rs (CODE) - updated 3x
+- code:src/websocket.rs (CODE) - updated 2x
+
+---
+
+## Implementation
+
+**Model Routing:**
+
+| Agent | Task | Model | Status | Duration |
+|-------|------|-------|--------|----------|
+| @rust-architect | Design connection pool architecture | opus | ✅ | 2m 15s |
+| @rust-pro | Implement ConnectionPool struct | sonnet | ✅ | 3m 40s |
+| @rust-pro | Implement WebSocket handler | sonnet | ✅ | 2m 50s |
+| @test-writer | Write unit tests | sonnet | ✅ | 1m 30s |
+| @test-writer | Write integration tests | sonnet | ✅ | 2m 10s |
+| @rust-pro | Add debug logging | haiku | ✅ | 0m 25s |
+| @rust-pro | Format code | haiku | ✅ | 0m 10s |
+| @rust-pro | Update config examples | haiku | ✅ | 0m 18s |
+
+**Model Cost Breakdown:**
+
+| Model | Tasks | Tokens In | Tokens Out | Est. Cost |
+|-------|-------|-----------|------------|-----------|
+| opus | 2 | 12,450 | 8,230 | $0.28 |
+| sonnet | 5 | 28,900 | 15,670 | $0.14 |
+| haiku | 3 | 6,200 | 1,450 | $0.002 |
+| **Total** | **10** | **47,550** | **25,350** | **$0.42** |
+
+---
+
+## Shadow Workspace Verification
+
+**Container:** shadow-rvgb-1732880400-a1b2c3
+
+### Verification Gauntlet Results
+
+| Stage | Status | Details |
+|-------|--------|---------|
+| 1. Syntax Check | ✅ PASS | No syntax errors |
+| 2. Linter (clippy) | ⚠️ WARN | 3 warnings (non-blocking) |
+| 3. Type Check | ✅ PASS | All types valid |
+| 4. Security Scan | ✅ PASS | No vulnerabilities (cargo-audit) |
+| 5. Unit Tests | ✅ PASS | 47/47 tests passed (100% coverage) |
+
+**Overall:** ✅ PASSED
+
+**Warnings (non-blocking):**
+- Unused import in src/utils.rs:15
+- Consider using if-let in src/engine.rs:230
+- Function complexity high in src/engine.rs:process_order
+
+---
+
+## TDD Loop Results
+
+| Strike | Action | Result | Duration |
+|--------|--------|--------|----------|
+| 1 | Initial verification | ❌ FAIL | - |
+|   | Error: Type mismatch in src/engine.rs:145 | | |
+| 2 | Agent fix attempt (@rust-pro) | ✅ PASS | 1m 20s |
+|   | Fix: Added ? operator for error propagation | | |
+
+**Total Attempts:** 2/3 (succeeded on Strike 2)
+
+---
+
+## Multi-Perspective Review
+
+| Reviewer | Rating | Critical | Warnings | Notes |
+|----------|--------|----------|----------|-------|
+| @security-auditor | 🟢 Good | 0 | 1 | Consider rate limiting on WS endpoint |
+| @architecture-reviewer | 🟢 Excellent | 0 | 0 | Clean separation, good error handling |
+| @performance-reviewer | 🟡 Acceptable | 0 | 2 | Clone in hot path (line 145) |
+| @simplicity-reviewer | 🟢 Simple | 0 | 1 | Extract validation helper |
+| @code-reviewer | 🟢 High Quality | 0 | 0 | Idiomatic Rust, good coverage |
+
+**Overall Assessment:** ✅ APPROVED (no critical issues)
+
+**Detailed Findings:**
+- Security: Rate limiting suggestion (src/websocket.rs:89)
+- Performance: Unnecessary clone (src/engine.rs:145) - consider Arc
+- Simplicity: Extract validation function (src/websocket.rs:120-140)
+
+---
+
+## Reflexion
+
+**Self-Critique:** ✅ All checks passed
+- ✅ Solves stated problem (connection pool with bounded channels)
+- ✅ No obvious bugs (47 tests passing)
+- ✅ Not over-engineered (simplicity review: 🟢)
+- ✅ No critical review findings
+- ✅ Confident to deploy
+
+**Reflection Generated:**
+
+**Learning:** When implementing async Rust functions that can error, always define and import error types before using Result<T, E>
+
+**Context:**
+- What failed: Type errors in async function (Strike 1)
+- Root cause: Missing error type import
+- Fix applied: Added `use crate::errors::Error;`
+- Lesson: Define error types early in module hierarchy
+
+**Stored in:**
+- ✅ Procedural memory (PostgreSQL)
+- ✅ Knowledge graph (reflection → src/engine.rs)
+- ✅ Tags: rust, async, error-handling, types, result
+
+---
+
+## Shadow Workspace Status
+
+**Status:** ✅ COMMITTED to main workspace
+
+**Changes Applied:**
+- Modified: src/engine.rs (+120 lines)
+- Modified: src/websocket.rs (+85 lines)
+- Added: src/connection_pool.rs (new file, 200 lines)
+- Modified: tests/engine_test.rs (+30 lines)
+
+**Commit Hash:** a1b2c3d4e5f6
+
+**Shadow Container:** Cleaned up (stopped and removed)
+
+---
+
+## Memory Consolidation
+
+**Consolidation completed at:** 2025-11-29T10:38:32Z
+
+### Episodic Memory
+- New episodes: 23 (from this pipeline)
+- Total episodes: 1,270
+- Archived: 145 (>30 days, low importance)
+
+### Semantic Memory
+- Patterns updated: 2 (rust-async-websockets, error-handling-async)
+- New patterns: 1 (bounded-channel-connection-pool, utility: 0.7)
+- Patterns pruned: 0 (next prune: 9 runs from now)
+
+### Knowledge Graph
+- New entities: 5 (3 functions, 1 file, 1 reflection)
+- New relations: 4
+- Updated relations: 2 (weight increased)
+- **Total graph size:** 487 entities, 1,203 relations
+
+### Procedural Memory (Reflections)
+- New reflections: 1 (rust async error handling)
+- Total reflections: 34
+
+---
+
+## Knowledge Graph Updates
+
+**New Entities:**
+- file:src/connection_pool.rs
+- function:ConnectionPool::new
+- function:ConnectionPool::acquire
+- function:ConnectionPool::release
+- reflection:rust-async-error-types
+
+**New Relations:**
+- src/websocket.rs --uses--> src/connection_pool.rs
+- src/engine.rs --uses--> src/connection_pool.rs
+- reflection:rust-async-error-types --applies_to--> src/engine.rs
+- ConnectionPool::new --called_by--> src/websocket.rs
+
+**Graph Insights:**
+- Most central file: src/engine.rs (15 relations)
+- Most reused module: src/types.rs (imported by 8 files)
+
+---
+
+## Final Summary
+
+✅ **Task completed successfully**
+
+**Key Achievements:**
+- ✅ WebSocket connection pool implemented with bounded channels
+- ✅ Graceful shutdown for 10K+ concurrent connections
+- ✅ Comprehensive error handling and recovery
+- ✅ 100% test coverage (47/47 tests passing)
+- ✅ All security and quality reviews passed
+- ✅ Changes committed to main workspace
+
+**Learnings Captured:**
+- 1 new reflection stored (async error handling)
+- 1 new semantic pattern (bounded-channel-connection-pool)
+- Knowledge graph updated with 5 entities, 4 relations
+
+**Pipeline Efficiency:**
+- Total duration: 8m 32s
+- Model cost: $0.42
+- TDD strikes: 2/3 (resolved on second attempt)
+- Verification: First-pass after Strike 2 fix
+
+**Next Steps:**
+- Consider performance optimizations (Arc instead of clone)
+- Add rate limiting to WebSocket endpoint (security suggestion)
+- Extract validation helper function (simplicity suggestion)
+
+---
+
+## Infrastructure Cleanup
+
+- ✅ Shadow container stopped and removed
+- ✅ Redis Blackboard artifacts archived
+- ✅ PostgreSQL memory consolidated
+- ✅ Temporary files cleaned up
+
+**Blackboard data retained for:** 7 days (then auto-purged)
+
+---
+
+**RVGB Pipeline ID:** rvgb-1732880400-a1b2c3
+**Timestamp:** 2025-11-29T10:38:32Z
+**Version:** RVGB v3.0
+```
 
 ---
 
 ## SKIP OPTIONS
 
 User can skip auto-steps by saying:
-- "skip tests" → Skip Step 7 (TDD)
-- "skip review" → Skip Step 8 (Multi-review)
-- "skip worktree" or "direct mode" → Skip Step 5, 10 (Worktree)
-- "quick mode" → Skip Steps 7, 8, 9, 12, 13
+
+**Infrastructure:**
+- "offline mode" → Skip infrastructure checks, use JSON fallbacks
+- "no docker" → Skip shadow workspace, use git worktree instead
+
+**Verification:**
+- "skip tests" → Skip STEP 10 (TDD Loop)
+- "skip review" → Skip STEP 11 (Multi-perspective review)
+- "skip verification" → Skip STEP 9 (Verification gauntlet)
+
+**Memory:**
+- "skip memory" → Skip STEP 2 (Memory retrieval)
+- "skip consolidation" → Skip STEP 14 (Memory consolidation)
+- "skip reflection" → Skip STEP 12 (Reflexion)
+
+**Quick Mode:**
+- "quick mode" → Skip: STEP 9, 10, 11, 12, 14 (verification, TDD, reviews, reflexion, consolidation)
+- "direct mode" → Skip: STEP 1, 7, 13 (infrastructure, shadow workspace, commit isolation)
+
+**Debug Mode:**
+- "keep shadow" → Don't clean up shadow container (for debugging)
+- "verbose" → Include all Blackboard operations in report
 
 ---
 
-BEGIN ORCHESTRATION.
+## FALLBACK MODES
+
+**If infrastructure unavailable:**
+
+### PostgreSQL → JSON Files
+```
+Memory location: /home/rnd/.claude/orchestrator/memory/
+- episodic_memory.json (raw episodes)
+- semantic_memory.json (patterns)
+- procedural_memory.json (reflections)
+- knowledge_graph.json (entities + relations)
+```
+
+### Redis → In-Memory Dict
+```python
+# In-memory Blackboard (no persistence across runs)
+blackboard = {
+    "artifacts": {},
+    "locks": {},
+    "status": {},
+    "agents": {}
+}
+```
+
+### Docker → Git Worktree
+```bash
+# Use git worktree instead of Docker container
+git worktree add .worktrees/$PIPELINE_ID
+# Work in .worktrees/$PIPELINE_ID/
+# Merge or delete worktree at end
+```
+
+### MCP → Direct Queries
+```bash
+# Instead of mcp__memory__search_memory()
+psql $DATABASE_URL -c "SELECT * FROM episodic_memory WHERE ..."
+```
+
+---
+
+## ORCHESTRATOR RESPONSIBILITIES
+
+**DO:**
+- ✅ Delegate ALL implementation to agents
+- ✅ Coordinate via Blackboard
+- ✅ Run verification in shadow workspace
+- ✅ Update memory after completion
+- ✅ Generate reflections from failures
+- ✅ Provide comprehensive reports
+
+**DO NOT:**
+- ❌ Write implementation code yourself
+- ❌ Skip verification steps (unless user says "skip")
+- ❌ Forget to update memory/knowledge graph
+- ❌ Commit without shadow verification
+- ❌ Ignore critical review findings
+
+---
+
+## BEGIN RVGB ORCHESTRATION
+
+Execute the 15-step RVGB pipeline for the task specified above.
