@@ -911,6 +911,199 @@ with ShadowWorkspace(project_path) as shadow:
 
 ---
 
+## SMART PARALLELIZATION RULES
+
+**Goal:** Maximize speed by running independent tasks in parallel, but stay sequential when there's file conflict risk.
+
+### Parallelization Decision Matrix
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  PARALLEL (spawn multiple Task calls in ONE message):       │
+│  ├─ Tasks touch DIFFERENT files                             │
+│  ├─ Tasks are in DIFFERENT directories                      │
+│  ├─ Read-only analysis tasks                                │
+│  ├─ Independent test suites                                 │
+│  ├─ Multi-perspective reviews (5 reviewers at once)         │
+│  └─ Research + planning (no file writes)                    │
+│                                                             │
+│  SEQUENTIAL (one Task at a time):                           │
+│  ├─ Tasks touch the SAME file                               │
+│  ├─ Task B depends on Task A's output                       │
+│  ├─ Shared state modification (config, env)                 │
+│  ├─ Database migrations (order matters)                     │
+│  └─ Chained transformations (parse → transform → write)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Auto-Detection Algorithm
+
+**Before spawning agents, analyze task list:**
+
+```python
+def can_parallelize(tasks):
+    """Determine which tasks can run in parallel."""
+
+    # Extract file targets from each task
+    task_files = {}
+    for task in tasks:
+        task_files[task.id] = extract_target_files(task.description)
+
+    # Build conflict graph
+    conflicts = []
+    for i, task_a in enumerate(tasks):
+        for task_b in tasks[i+1:]:
+            files_a = task_files[task_a.id]
+            files_b = task_files[task_b.id]
+
+            # Check for file overlap
+            if files_a & files_b:  # Set intersection
+                conflicts.append((task_a.id, task_b.id))
+
+    # Group into parallel batches
+    if not conflicts:
+        return [tasks]  # All can run in parallel
+
+    # Topological sort by dependencies
+    return topological_batches(tasks, conflicts)
+```
+
+### Parallelization Examples
+
+**GOOD - Parallel (different files):**
+```xml
+<!-- These touch different files - spawn together -->
+<invoke name="Task">
+  <parameter name="prompt">Fix auth bug in src/auth.rs</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">Add logging to src/websocket.rs</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">Write tests for src/engine.rs</parameter>
+</invoke>
+```
+
+**GOOD - Parallel (all read-only):**
+```xml
+<!-- Reviews don't modify files - spawn together -->
+<invoke name="Task">
+  <parameter name="prompt">@security-auditor: Review for vulnerabilities</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">@performance-reviewer: Review for bottlenecks</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">@architecture-reviewer: Review design</parameter>
+</invoke>
+```
+
+**BAD - Must be Sequential (same file):**
+```xml
+<!-- These touch the same file - DO NOT parallelize -->
+<!-- First: -->
+<invoke name="Task">
+  <parameter name="prompt">Add struct definition to src/types.rs</parameter>
+</invoke>
+<!-- Wait for completion, THEN: -->
+<invoke name="Task">
+  <parameter name="prompt">Add impl block to src/types.rs</parameter>
+</invoke>
+```
+
+**BAD - Must be Sequential (dependency):**
+```xml
+<!-- Task B needs Task A's output -->
+<!-- First: -->
+<invoke name="Task">
+  <parameter name="prompt">Create database schema in migrations/</parameter>
+</invoke>
+<!-- Wait for completion, THEN: -->
+<invoke name="Task">
+  <parameter name="prompt">Write model that uses the new schema</parameter>
+</invoke>
+```
+
+### Maximum Parallel Agents
+
+```
+Recommended limits:
+- Implementation tasks: 3-5 parallel (file lock contention)
+- Review tasks: 5-7 parallel (read-only, no conflicts)
+- Research/analysis: 10+ parallel (no file access)
+
+Memory consideration:
+- Each agent uses ~20-50K tokens context
+- 5 parallel agents = ~250K tokens concurrent
+- Monitor for rate limits
+```
+
+### Parallelization Trigger Words
+
+**Auto-detect parallel-safe patterns in user request:**
+```
+Parallel triggers:
+- "fix A and B" (different targets)
+- "add X to file1, add Y to file2"
+- "review the code" (read-only)
+- "analyze/research/explore" (read-only)
+- "run tests for module A and module B"
+- "check A, B, C, D" (list of independent items)
+
+Sequential triggers:
+- "then" / "after that" / "once done"
+- "update the same file"
+- "depends on" / "needs the output of"
+- "in order" / "step by step"
+```
+
+### CRITICAL: Research Tasks Are ALWAYS Parallelizable
+
+**Web searches, API checks, version lookups = NO file writes = ALWAYS parallel**
+
+```
+Example: "check dYdX, Bybit, Bitget, Kucoin, Paradex SDKs"
+
+WRONG (sequential):
+- Search dYdX → wait → Search Bybit → wait → Search Bitget...
+- Total: 15+ web searches, one at a time
+
+RIGHT (parallel):
+<invoke name="Task">
+  <parameter name="prompt">Research dYdX v4-clients-rs: latest version, changelog, breaking changes</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">Research Bybit SDK: latest version, changelog, breaking changes</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">Research Bitget SDK: latest version, changelog, breaking changes</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">Research Kucoin SDK: latest version, changelog, breaking changes</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="prompt">Research Paradex SDK: latest version, changelog, breaking changes</parameter>
+</invoke>
+<!-- ALL 5 spawn in ONE message, run simultaneously -->
+<!-- Then compile results -->
+```
+
+**Rule: If task involves checking/researching MULTIPLE independent items:**
+1. Split into one agent per item
+2. Spawn ALL agents in single message (parallel)
+3. Wait for all to complete
+4. Compile results into summary
+
+**This applies to:**
+- SDK version checks (like above)
+- API documentation lookups
+- Competitor analysis
+- Multi-file code review
+- Dependency audit
+- Security vulnerability scans
+
+---
+
 ## STEP 8: Delegate to Agents (read/write Blackboard)
 
 **Goal:** Agents execute tasks, coordinate via Blackboard
