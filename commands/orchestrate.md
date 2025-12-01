@@ -10,6 +10,110 @@ allowed-tools: "Task,Read,Write,Edit,Glob,Grep,Bash(python3:*),Bash(git:*)"
 
 ---
 
+## TASK COMPLEXITY ROUTING (MANDATORY FIRST STEP)
+
+**BEFORE doing anything else, classify the task complexity:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  SIMPLE (target: < 2 minutes)                               │
+│  ─────────────────────────────────────────────────────────  │
+│  Triggers: "fix", "add logging", "rename", "typo",          │
+│            "update comment", "change value", "small"        │
+│  Scope: Single file, known location, obvious fix            │
+│  → SKIP Steps 1-7, 9-14 → Jump directly to Step 8 + 15      │
+│  → Use model="haiku" for agent                              │
+│  → Timeout: 120 seconds max                                 │
+├─────────────────────────────────────────────────────────────┤
+│  MEDIUM (target: 2-8 minutes)                               │
+│  ─────────────────────────────────────────────────────────  │
+│  Triggers: "implement", "add feature", "integrate",         │
+│            "connect", "new endpoint", "create"              │
+│  Scope: Multi-file, known codebase area                     │
+│  → SKIP Steps 3, 4, 7, 11, 14 → Run 1-2, 5-6, 8-10, 12, 15  │
+│  → Use model="sonnet" for agent                             │
+│  → Timeout: 300 seconds max                                 │
+├─────────────────────────────────────────────────────────────┤
+│  COMPLEX (target: 8-15 minutes)                             │
+│  ─────────────────────────────────────────────────────────  │
+│  Triggers: "design", "architect", "refactor system",        │
+│            "new module", "unknown area", "investigate"      │
+│  Scope: Architecture changes, new systems, exploration      │
+│  → Run full 15-step pipeline                                │
+│  → Use model="opus" for critical decisions                  │
+│  → Timeout: 600 seconds max                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### SIMPLE TASK FAST PATH
+
+**If task matches SIMPLE triggers → Execute this immediately:**
+
+```
+SIMPLE TASK EXECUTION:
+1. Parse task description for target file(s) and change
+2. Spawn ONE agent with direct, minimal prompt:
+
+   Task(
+     subagent_type="[appropriate-agent]",
+     model="haiku",
+     prompt="Fix [specific issue] in [file:line]. The problem is [X]. The fix is [Y]."
+   )
+
+3. Report result to user (Step 15 only)
+4. DONE - No memory, no blackboard, no verification gauntlet
+```
+
+**Example SIMPLE prompts (keep under 100 words):**
+```
+# BAD - too verbose:
+"You are @rust-pro with PIPELINE_ID xyz. Initialize blackboard at REDIS_URL.
+Read the context from Step 4. Coordinate with other agents. Write to blackboard
+when done. The task is to fix a type error in src/engine.rs line 145..."
+[50+ more lines]
+
+# GOOD - direct and minimal:
+"Fix type error in src/engine.rs:145. Error: expected Result<Fill>, got Fill.
+Fix: wrap return value with Ok(). Run cargo check to verify."
+```
+
+### MEDIUM TASK FLOW
+
+**If task matches MEDIUM triggers:**
+```
+Step 1: Quick memory check (30s max)
+Step 2: Skip
+Step 3: Skip
+Step 4: Skip
+Step 5: Brief plan (60s max) - 3-5 bullet points only
+Step 6: Skip blackboard - use direct delegation
+Step 7: Skip shadow workspace
+Step 8: Delegate to agent(s) with PARALLEL execution if multiple files
+Step 9: Basic verification (build/test only)
+Step 10: One retry if fails
+Step 11: Skip multi-review
+Step 12: Quick success/fail note
+Step 13: Skip
+Step 14: Skip
+Step 15: Report
+```
+
+### TIMEOUT ENFORCEMENT
+
+**ALL agent calls MUST specify timeout:**
+```
+Task(
+  subagent_type="...",
+  model="haiku|sonnet|opus",
+  prompt="...",
+  timeout=120000  # milliseconds - 120s for simple, 300s for medium, 600s for complex
+)
+```
+
+**If agent hits timeout → abort, use partial results, continue pipeline**
+
+---
+
 ## ARCHITECTURE MODES
 
 ```
@@ -73,9 +177,15 @@ After completion, you MUST:
 
 ### RULE 4: USE MODEL ROUTING
 Route tasks to appropriate model based on complexity:
-- **opus** → Architecture, complex planning, critical decisions
-- **sonnet** → Implementation, standard coding tasks
-- **haiku** → Simple fixes, formatting, boilerplate
+
+| Task Type | Model | Timeout | Use Case |
+|-----------|-------|---------|----------|
+| Exploration/Search | haiku | 60s | Codebase search, file finding, research |
+| Simple fixes | haiku | 120s | Typos, small edits, logging |
+| Standard implementation | sonnet | 180s | Features, bug fixes, tests |
+| Architecture/Complex | opus | 300s | Design decisions, refactoring |
+
+**CRITICAL: Exploration agents (subagent_type="Explore") MUST use model="haiku"**
 
 ---
 
@@ -1107,6 +1217,50 @@ RIGHT (parallel):
 ## STEP 8: Delegate to Agents (read/write Blackboard)
 
 **Goal:** Agents execute tasks, coordinate via Blackboard
+
+### 8.0 LITE MODE DELEGATION (Preferred - No Redis/Docker)
+
+**For most tasks, use simple direct delegation without infrastructure:**
+
+```xml
+<!-- SIMPLE: Single agent, direct prompt, no boilerplate -->
+<invoke name="Task">
+  <parameter name="subagent_type">rust-pro</parameter>
+  <parameter name="model">haiku</parameter>
+  <parameter name="prompt">Fix type error in src/engine.rs:145.
+Error: expected Result&lt;Fill&gt;, got Fill.
+Solution: wrap return with Ok().
+Verify: cargo check</parameter>
+</invoke>
+```
+
+```xml
+<!-- MEDIUM: Multiple agents in PARALLEL (one message, multiple invokes) -->
+<invoke name="Task">
+  <parameter name="subagent_type">rust-pro</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">Add WebSocket reconnection in src/ws.rs:
+- Exponential backoff (100ms, 200ms, 400ms...)
+- Max 5 retries
+- Log each attempt</parameter>
+</invoke>
+<invoke name="Task">
+  <parameter name="subagent_type">test-writer</parameter>
+  <parameter name="model">haiku</parameter>
+  <parameter name="prompt">Write tests for WebSocket reconnection in tests/ws_test.rs:
+- Test successful reconnect
+- Test max retries exceeded
+- Test backoff timing</parameter>
+</invoke>
+<!-- Both agents spawn simultaneously in single message -->
+```
+
+**LITE mode rules:**
+- NO Redis, NO Blackboard, NO Docker
+- Direct prompts under 200 words
+- Use file paths explicitly
+- Spawn parallel agents in ONE message
+- No coordination needed - each agent works independently
 
 ### 8.1 Agent Spawning with Context
 
