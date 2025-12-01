@@ -112,6 +112,70 @@ Task(
 
 **If agent hits timeout → abort, use partial results, continue pipeline**
 
+### RETRY LOGIC
+
+**Retry with exponential backoff on transient failures:**
+
+**Retry on:**
+- API rate limits (429 status)
+- Server errors (5xx status)
+- Network timeouts
+- Transient connection failures
+
+**Exponential backoff schedule (max 3 retries):**
+- Attempt 1: Wait 1s
+- Attempt 2: Wait 2s
+- Attempt 3: Wait 4s
+- Attempt 4: Wait 8s
+- Final attempt: Wait 16s
+
+**Do NOT retry on:**
+- Validation errors (4xx status codes except 429)
+- Agent execution failures
+- Budget exceeded errors
+- Authentication failures
+
+**Logging:**
+- Log each retry attempt with: timestamp, error type, retry count, wait duration
+- Log final success or failure after all retries exhausted
+
+### BUDGET GUARDRAILS
+
+**Maximum token budgets per task complexity:**
+- SIMPLE: 50K tokens max
+- MEDIUM: 150K tokens max
+- COMPLEX: 500K tokens max
+
+**Budget monitoring:**
+```
+budget_remaining = max_tokens - tokens_used
+```
+
+**If budget exceeded → abort agent immediately**
+
+**Log warning when 80% of budget consumed**
+
+---
+
+### CONTEXT SUMMARIZATION
+
+**When conversation history exceeds 5000 tokens, summarize before delegating to agents:**
+
+```
+Task(
+  subagent_type="summarizer",
+  model="haiku",
+  prompt="Summarize the key points from this context relevant to: [task description]",
+  timeout=60000  # 60s for summarization
+)
+```
+
+**Requirements:**
+- Keep summaries under 500 tokens
+- Extract only information relevant to the current task
+- Pass summarized context to agents instead of full conversation history
+- Preserve critical details (file paths, error messages, specific requirements)
+
 ---
 
 ## ARCHITECTURE MODES
@@ -186,6 +250,26 @@ Route tasks to appropriate model based on complexity:
 | Architecture/Complex | opus | 300s | Design decisions, refactoring |
 
 **CRITICAL: Exploration agents (subagent_type="Explore") MUST use model="haiku"**
+
+### RULE 5: USE MCP TOOLS WHEN AVAILABLE
+
+Before starting work, check for available MCP tools that can help complete the task more efficiently.
+
+**Common MCP Tools:**
+- **Search engines**: `mcp__search`, `mcp__websearch` - for web searches and research
+- **Web fetch**: `mcp__fetch`, `mcp__webfetch` - for fetching web content
+- **Playwright browser**: `mcp__playwright`, `mcp__browser` - for browser automation and web scraping
+
+**Guidelines:**
+- Always prefer MCP tools over manual alternatives
+- Use `mcp__search` instead of manual web scraping or curl commands
+- Use `mcp__playwright` for complex web interactions instead of writing custom automation
+- Check available tools with list_tools() or similar inspection methods before proceeding
+- MCP tools are more reliable, efficient, and better integrated with the agent system
+
+**Example:**
+- DON'T: Use curl or requests library to manually scrape websites
+- DO: Use `mcp__webfetch` or `mcp__search` for web content retrieval
 
 ---
 
@@ -1262,6 +1346,136 @@ Verify: cargo check</parameter>
 - Spawn parallel agents in ONE message
 - No coordination needed - each agent works independently
 
+### 8.0.1 STRUCTURED OUTPUT FORMAT
+
+**To prevent "trust" errors from freeform text responses, require agents to return structured JSON:**
+
+**Required JSON Schema:**
+```json
+{
+  "task_id": "string - unique identifier for the task",
+  "status": "string - one of: completed, failed, partial",
+  "code_changes": [
+    {
+      "file_path": "string - absolute path to modified file",
+      "action": "string - one of: created, modified, deleted",
+      "verification": "string - how change was verified"
+    }
+  ],
+  "verification_result": {
+    "passed": "boolean - true if all checks passed",
+    "checks": {
+      "syntax": "boolean",
+      "linter": "boolean",
+      "tests": "boolean"
+    },
+    "errors": "array - any errors encountered"
+  },
+  "summary": "string - brief description of what was accomplished"
+}
+```
+
+**Example Agent Response:**
+```json
+{
+  "task_id": "fix-websocket-reconnect",
+  "status": "completed",
+  "code_changes": [
+    {
+      "file_path": "/workspace/src/ws.rs",
+      "action": "modified",
+      "verification": "cargo check passed"
+    }
+  ],
+  "verification_result": {
+    "passed": true,
+    "checks": {
+      "syntax": true,
+      "linter": true,
+      "tests": true
+    },
+    "errors": []
+  },
+  "summary": "Added exponential backoff reconnection logic with max 5 retries"
+}
+```
+
+**Why This Prevents Trust Errors:**
+- Structured data is machine-parseable (no ambiguous natural language)
+- Explicit status codes eliminate interpretation errors
+- File paths are absolute and verifiable
+- Verification results are boolean, not subjective
+- Orchestrator can programmatically validate completeness
+
+**Agent Prompt Template with Structured Output:**
+```xml
+<invoke name="Task">
+  <parameter name="subagent_type">rust-pro</parameter>
+  <parameter name="model">sonnet</parameter>
+  <parameter name="prompt">Fix type error in src/engine.rs:145.
+
+Error: expected Result&lt;Fill&gt;, got Fill
+Solution: wrap return with Ok()
+Verify: cargo check
+
+IMPORTANT: Return your response as JSON matching this schema:
+{
+  "task_id": "fix-type-error-engine-145",
+  "status": "completed|failed|partial",
+  "code_changes": [{file_path, action, verification}],
+  "verification_result": {passed, checks, errors},
+  "summary": "brief description"
+}
+
+Do NOT include freeform text outside the JSON structure.</parameter>
+</invoke>
+```
+
+### CONTEXT SLICING
+
+**Goal:** Only inject relevant subset of memory into agents, not full history
+
+**Memory optimization rules:**
+- **For code tasks:** Only include relevant file contents + error messages
+- **For research:** Only include search results + key findings
+- **For review:** Only include changed files + test results
+- **Maximum context per agent:** 20K tokens
+
+**Selection strategy:**
+Use grep/relevance matching to select context:
+```bash
+# Filter relevant files only
+grep -l "authentication" memory/*.md | head -5
+
+# Extract only error messages from logs
+grep "ERROR\|FAIL" memory/execution.log
+
+# Include only changed files for review
+git diff --name-only HEAD~1 | xargs cat
+```
+
+**Example - Code task context slicing:**
+```xml
+<invoke name="Task">
+  <parameter name="subagent_type">rust-pro</parameter>
+  <parameter name="model">haiku</parameter>
+  <parameter name="prompt">Fix authentication bug in src/auth.rs
+
+Relevant context (sliced):
+- File: src/auth.rs (lines 45-89 only)
+- Error: "invalid token signature" from logs/error.log
+- Related: src/jwt.rs (verify_token function only)
+
+DO NOT include: Full repository map, unrelated modules, all logs</parameter>
+</invoke>
+```
+
+**Benefits:**
+- Faster agent execution (less token processing)
+- Lower costs (fewer input tokens)
+- Better focus (agents not distracted by irrelevant context)
+- Scales to larger codebases
+
 ### 8.1 Agent Spawning with Context
 
 **Agent receives:**
@@ -1374,18 +1588,88 @@ redis-cli -u $REDIS_URL DEL locks:$PIPELINE_ID:src/engine.rs
 
 ### 8.4 Agent Activity Logging
 
-**All Blackboard operations logged:**
-```bash
-# Agent logs activity
-redis-cli -u $REDIS_URL RPUSH agents:$PIPELINE_ID:@rust-pro \
-    "$(date -Iseconds)|WRITE|artifacts:architecture_v1|success"
+**Purpose:** Track agent operations for debugging without exposing full conversation history
 
-redis-cli -u $REDIS_URL RPUSH agents:$PIPELINE_ID:@rust-pro \
-    "$(date -Iseconds)|LOCK|src/engine.rs|acquired"
-
-redis-cli -u $REDIS_URL RPUSH agents:$PIPELINE_ID:@rust-pro \
-    "$(date -Iseconds)|UNLOCK|src/engine.rs|released"
+**Log Format:**
 ```
+[timestamp] [agent_name] [action] [target] [status]
+```
+
+**Required Log Events:**
+1. **Agent Lifecycle:**
+   ```
+   2025-12-01T10:30:45Z @rust-pro STARTED task_delegation success
+   2025-12-01T10:32:15Z @rust-pro COMPLETED task_delegation success
+   ```
+
+2. **File Operations:**
+   ```
+   2025-12-01T10:31:00Z @rust-pro READ src/engine.rs success
+   2025-12-01T10:31:30Z @rust-pro WRITE src/engine.rs success
+   2025-12-01T10:31:35Z @rust-pro WRITE tests/engine_test.rs success
+   ```
+
+3. **Tool Calls:**
+   ```
+   2025-12-01T10:31:10Z @rust-pro TOOL_CALL cargo_check success
+   2025-12-01T10:31:45Z @test-writer TOOL_CALL cargo_test success
+   ```
+
+4. **Errors:**
+   ```
+   2025-12-01T10:31:20Z @rust-pro ERROR type_check failed
+   2025-12-01T10:31:25Z @rust-pro RETRY type_check started
+   ```
+
+5. **Blackboard Operations:**
+   ```
+   2025-12-01T10:31:50Z @rust-pro WRITE artifacts:architecture_v1 success
+   2025-12-01T10:31:55Z @rust-pro LOCK src/engine.rs acquired
+   2025-12-01T10:32:00Z @rust-pro UNLOCK src/engine.rs released
+   ```
+
+**Storage Location:**
+```
+~/.claude/orchestrator/logs/
+├── orchestrator_YYYYMMDD.log          # Main orchestrator log
+├── agent_@rust-pro_YYYYMMDD.log       # Per-agent logs
+└── pipeline_PIPELINE_ID.log           # Per-pipeline logs
+```
+
+**Implementation:**
+```bash
+# Log to file
+LOG_DIR="$HOME/.claude/orchestrator/logs"
+mkdir -p "$LOG_DIR"
+
+log_event() {
+    local agent=$1 action=$2 target=$3 status=$4
+    local timestamp=$(date -Iseconds)
+    local log_entry="$timestamp $agent $action $target $status"
+
+    # Write to agent-specific log
+    echo "$log_entry" >> "$LOG_DIR/agent_${agent}_$(date +%Y%m%d).log"
+
+    # Write to pipeline log if PIPELINE_ID exists
+    if [ -n "$PIPELINE_ID" ]; then
+        echo "$log_entry" >> "$LOG_DIR/pipeline_${PIPELINE_ID}.log"
+    fi
+}
+
+# Usage examples
+log_event "@rust-pro" "STARTED" "task_delegation" "success"
+log_event "@rust-pro" "READ" "src/engine.rs" "success"
+log_event "@rust-pro" "TOOL_CALL" "cargo_check" "success"
+log_event "@rust-pro" "ERROR" "type_check" "failed"
+log_event "@rust-pro" "COMPLETED" "task_delegation" "success"
+```
+
+**Benefits:**
+- Debug agent behavior without full conversation logs
+- Track performance bottlenecks (time between events)
+- Identify error patterns across agents
+- Audit file access and modifications
+- Reconstruct pipeline execution flow
 
 ---
 
